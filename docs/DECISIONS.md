@@ -66,3 +66,8 @@ The API wraps the same Broker, so no rule is duplicated. It listens on 127.0.0.1
 not configurable), needs a random bearer token generated at each `serve`, rejects foreign Host
 headers, has no CORS and no interactive docs. `X-Acting-User` is a lab simplification and not
 authentication. SQLite connections are opened per call in the same thread.
+## D-013: v1.0.0 scope and framework mapping
+v1.0.0 is the end of the CLI/API line: no new runtime behavior, only the threat model, the
+architecture diagrams and the Portuguese README. The framework mapping names families and tactics
+only, without control or technique identifiers, so nothing unverified is published. The local GUI
+is planned for v1.1.0 and will reuse the same Broker service.
