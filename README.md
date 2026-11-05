@@ -4,13 +4,17 @@ A small, well-tested Just-In-Time (JIT) privileged access broker for a local lab
 Users request elevated access with a justification, approvers decide, access expires automatically,
 and every event goes to an append-only, tamper-evident audit log.
 
-> **Status:** v0.3.0, early development.
+Portuguese version: [README.pt-BR.md](README.pt-BR.md)
+
+> **Status:** v1.0.0.
 > **Lab project:** users are simulated (`--as <user>`) and there is no real authentication.
 > Never use it to protect real systems.
 
 ## Why it exists
 Standing privileged access is one of the most abused weaknesses in identity security.
-This project demonstrates the JIT model end to end: least privilege, separation of duties,
+JIT fixes this: a user gets elevated access only when needed, only for the time needed, only after a
+justified request is approved, and every step is logged.
+This project demonstrates the model end to end: least privilege, separation of duties,
 time-bound access, approval workflows and auditability.
 
 ## Features
@@ -60,7 +64,8 @@ Endpoints: `GET /health`, `POST /requests`, `GET /requests`, `POST /requests/{id
 `POST /sweep`, `GET /audit/verify`. `X-Acting-User` selects a simulated user; it is not authentication.
 
 ## Project structure
-See [docs/architecture.md](docs/architecture.md). Audit log format: [docs/audit-log-schema.md](docs/audit-log-schema.md).
+See [docs/architecture.md](docs/architecture.md) (with Mermaid diagrams).
+Audit log format: [docs/audit-log-schema.md](docs/audit-log-schema.md).
 
 ## Tech stack
 Python, Typer, Pydantic, SQLite, FastAPI, uvicorn, pytest, ruff, mypy, bandit, pip-audit, CodeQL.
@@ -70,11 +75,11 @@ Python, Typer, Pydantic, SQLite, FastAPI, uvicorn, pytest, ruff, mypy, bandit, p
     uv run pytest
 
 ## Security notes
-See [SECURITY.md](SECURITY.md) and [docs/security-review-v0.2.0.md](docs/security-review-v0.2.0.md).
-A full threat model will be published in `docs/`.
+See [docs/threat-model.md](docs/threat-model.md), [docs/security-review-v0.2.0.md](docs/security-review-v0.2.0.md)
+and [SECURITY.md](SECURITY.md). Known limits are documented there.
 
 ## Roadmap
-v1.0.0 threat model, architecture diagram, PT-BR README and final polish; v1.1.0 local GUI.
+v1.1.0 local GUI.
 
 ## License
 MIT. See [LICENSE](LICENSE).
