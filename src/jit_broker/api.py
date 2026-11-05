@@ -22,6 +22,7 @@ from jit_broker.domain import AccessResult, Grant, RequestRecord, RequestStatus
 from jit_broker.policy import Policy
 from jit_broker.service import Broker, BrokerError
 from jit_broker.store import Store
+from jit_broker.ui import register_ui
 
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 
@@ -155,4 +156,5 @@ def create_app(policy: Policy, db: Path, audit_path: Path, token: str) -> FastAP
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"entries": result.entries, "head_hash": result.head_hash}
 
+    register_ui(app)
     return app
