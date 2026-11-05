@@ -22,3 +22,12 @@ Each role lists its `requesters` and `approvers`; anyone not listed is denied.
 `approvals_required` cannot exceed the number of approvers, and listed people must have the
 matching capability. Error messages never echo input values. Files over 1 MB are rejected.
 Known limit: duplicate YAML keys are silently merged by the YAML parser (last one wins).
+## D-007: SQLite state, atomic decisions, expiry checked at decision time
+Requests and decisions live in SQLite; every statement uses bound parameters.
+Each write flow runs in a `BEGIN IMMEDIATE` transaction, so two concurrent decisions cannot both
+pass the checks. A pending request that is past its expiry is refused and marked `expired` when
+someone tries to decide it (not only by a background job). Any eligible denial closes the request.
+A user cannot request a role they are not listed for, and unknown roles give the same error as
+forbidden roles. Limits: 5 pending requests per user.
+Known limits: `--as` selects a simulated user and is not authentication; policy changes apply to
+requests that are still pending.

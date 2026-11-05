@@ -139,3 +139,10 @@ def test_oversized_file_is_rejected(tmp_path: Path) -> None:
     path.write_text("#" * (MAX_POLICY_FILE_BYTES + 1), encoding="utf-8")
     with pytest.raises(PolicyError, match="too large"):
         load_policy(path)
+
+
+def test_duplicate_requesters_are_rejected(tmp_path: Path) -> None:
+    data = _example_data()
+    data["roles"]["db-readonly"]["requesters"] = ["alice", "alice"]
+    with pytest.raises(PolicyError, match="duplicate"):
+        load_policy(_write(tmp_path, data))
