@@ -1,0 +1,50 @@
+# Example policy for the lab. All users and roles are fictional.
+schema_version: 1
+pending_request_ttl_minutes: 1440
+
+users:
+  alice:
+    display_name: "Alice (demo requester)"
+    capabilities: [request]
+  jonas:
+    display_name: "Jonas (demo requester)"
+    capabilities: [request]
+  carol:
+    display_name: "Carol (demo approver)"
+    capabilities: [approve]
+  carlos:
+    display_name: "Carlos (demo approver)"
+    capabilities: [approve]
+  arthur:
+    display_name: "Arthur (demo admin)"
+    capabilities: [admin]
+
+roles:
+  db-readonly:
+    description: "Read-only access to the simulated database."
+    risk: low
+    max_duration_minutes: 480
+    approvals_required: 1
+    requesters: [alice, jonas]
+    approvers: [carol, carlos]
+  db-admin:
+    description: "Administrative access to the simulated database."
+    risk: high
+    max_duration_minutes: 120
+    approvals_required: 2
+    requesters: [alice]
+    approvers: [carol, carlos]
+  server-ops:
+    description: "Operations access to the simulated server."
+    risk: medium
+    max_duration_minutes: 240
+    approvals_required: 1
+    requesters: [jonas]
+    approvers: [carol, carlos]
+  audit-viewer:
+    description: "Read access to the simulated audit reports."
+    risk: low
+    max_duration_minutes: 480
+    approvals_required: 1
+    requesters: [alice, jonas]
+    approvers: [carol, carlos]

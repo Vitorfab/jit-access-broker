@@ -16,3 +16,9 @@ More time requires a new request that goes through the policy again.
 
 ## D-005: uv + hatchling
 uv manages the environment and `uv.lock`; hatchling is the build backend.
+## D-006: Strict, deny-by-default policy
+The policy is loaded with `yaml.safe_load` and validated by Pydantic with `extra="forbid"`.
+Each role lists its `requesters` and `approvers`; anyone not listed is denied.
+`approvals_required` cannot exceed the number of approvers, and listed people must have the
+matching capability. Error messages never echo input values. Files over 1 MB are rejected.
+Known limit: duplicate YAML keys are silently merged by the YAML parser (last one wins).
