@@ -1,4 +1,4 @@
-"""Domain models: access requests and their lifecycle states."""
+"""Domain models: access requests, grants and their lifecycle states."""
 
 from enum import StrEnum
 
@@ -33,3 +33,28 @@ class RequestRecord(BaseModel):
     expires_at: AwareDatetime
     decided_at: AwareDatetime | None
     approvals: int = 0
+
+
+class Grant(BaseModel):
+    """Time-bound access created by a fully approved request."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: int
+    request_id: int
+    grantee: str
+    role: str
+    starts_at: AwareDatetime
+    ends_at: AwareDatetime
+    revoked_at: AwareDatetime | None
+
+
+class AccessResult(BaseModel):
+    """Answer of an access check."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    user: str
+    role: str
+    allowed: bool
+    ends_at: AwareDatetime | None

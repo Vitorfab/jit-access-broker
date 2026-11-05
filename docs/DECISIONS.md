@@ -31,3 +31,12 @@ A user cannot request a role they are not listed for, and unknown roles give the
 forbidden roles. Limits: 5 pending requests per user.
 Known limits: `--as` selects a simulated user and is not authentication; policy changes apply to
 requests that are still pending.
+## D-008: Grants start at final approval; audit is written inside the transaction
+A grant starts at the moment of the final approval and lasts the requested duration; there are no
+future-dated windows. `check` compares the current time with the grant window inside a transaction,
+so no background job is needed for correctness. The audit log is JSON Lines with `schema_version`,
+`seq`, `timestamp`, `event`, `actor` and `details`. Events are written before the database
+transaction commits: if the log cannot be written, the change is rolled back (fail closed).
+Free text (justification, reasons) is never written to the log.
+Known limits: refused attempts (for example a self-approval) are not logged yet; the log is not
+tamper-evident yet (hash chain planned for v0.2.0).

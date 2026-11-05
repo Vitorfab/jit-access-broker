@@ -9,7 +9,8 @@ from typing import Annotated
 import typer
 
 from jit_broker import __version__
-from jit_broker.domain import RequestRecord, RequestStatus
+from jit_broker.audit import AuditError, AuditLog
+from jit_broker.domain import Grant, RequestRecord, RequestStatus
 from jit_broker.policy import PolicyError, load_policy
 from jit_broker.service import Broker, BrokerError
 from jit_broker.store import Store
@@ -24,6 +25,7 @@ app = typer.Typer(help="Just-In-Time access broker (lab project).", no_args_is_h
 class Settings:
     policy: Path
     db: Path
+    audit: Path
 
 
 @app.callback()
@@ -35,19 +37,28 @@ def main(
     db: Annotated[
         Path, typer.Option("--db", envvar="JIT_BROKER_DB", help="SQLite state file.")
     ] = DEFAULT_DB,
+    audit: Annotated[
+        Path | None,
+        typer.Option(
+            "--audit",
+            envvar="JIT_BROKER_AUDIT",
+            help="Audit log (JSON Lines). Default: next to the database file.",
+        ),
+    ] = None,
 ) -> None:
     """Just-In-Time access broker (lab project).
 
     Lab only: --as selects a simulated user. It is NOT real authentication.
     """
-    ctx.obj = Settings(policy=policy, db=db)
+    audit_path = audit if audit is not None else db.with_name(f"{db.stem}-audit.jsonl")
+    ctx.obj = Settings(policy=policy, db=db, audit=audit_path)
 
 
 @contextmanager
 def _handled() -> Iterator[None]:
     try:
         yield
-    except (BrokerError, PolicyError) as exc:
+    except (BrokerError, PolicyError, AuditError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -60,7 +71,7 @@ def _open_broker(ctx: typer.Context) -> Iterator[Broker]:
     policy = load_policy(settings.policy)
     store = Store(settings.db)
     try:
-        yield Broker(policy, store)
+        yield Broker(policy, store, AuditLog(settings.audit))
     finally:
         store.close()
 
@@ -72,6 +83,16 @@ def _show(record: RequestRecord, as_json: bool) -> None:
     typer.echo(
         f"#{record.id} [{record.status.value}] {record.requester} -> {record.role} "
         f"for {record.duration_minutes} min (approvals: {record.approvals})"
+    )
+
+
+def _show_grant(grant: Grant, as_json: bool) -> None:
+    if as_json:
+        typer.echo(grant.model_dump_json())
+        return
+    typer.echo(
+        f"grant #{grant.id} (request #{grant.request_id}) {grant.grantee} -> {grant.role} "
+        f"from {grant.starts_at.isoformat()} until {grant.ends_at.isoformat()}"
     )
 
 
@@ -156,3 +177,31 @@ def list_requests(
     with _handled(), _open_broker(ctx) as broker:
         for record in broker.list_requests(wanted):
             _show(record, as_json)
+
+
+@app.command()
+def check(
+    ctx: typer.Context,
+    user: UserOpt,
+    role: Annotated[str, typer.Option(help="Role to check.")],
+    as_json: JsonOpt = False,
+) -> None:
+    """Check whether the user has access to the role right now (exit 0 = allowed, 1 = denied)."""
+    with _handled(), _open_broker(ctx) as broker:
+        result = broker.check_access(user, role)
+    if as_json:
+        typer.echo(result.model_dump_json())
+    elif result.allowed and result.ends_at is not None:
+        typer.echo(f"ALLOWED: {user} -> {role} until {result.ends_at.isoformat()}")
+    else:
+        typer.echo(f"DENIED: {user} -> {role}")
+    if not result.allowed:
+        raise typer.Exit(code=1)
+
+
+@app.command("grants")
+def list_grants(ctx: typer.Context, as_json: JsonOpt = False) -> None:
+    """List all grants."""
+    with _handled(), _open_broker(ctx) as broker:
+        for grant in broker.list_grants():
+            _show_grant(grant, as_json)
