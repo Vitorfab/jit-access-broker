@@ -25,6 +25,11 @@ def _args(tmp_path: Path, *rest: str) -> list[str]:
     return ["--policy", str(EXAMPLE), "--db", str(tmp_path / "state.db"), *rest]
 
 
+def _approve(tmp_path: Path) -> None:
+    approve = ["approve", "1", "--as", "carol", "--reason", "Looks fine"]
+    runner.invoke(app, _args(tmp_path, *approve))
+
+
 def test_validate_policy_accepts_example() -> None:
     result = runner.invoke(app, ["validate-policy", str(EXAMPLE)])
     assert result.exit_code == 0
@@ -69,3 +74,40 @@ def test_unauthorized_approval_fails_with_error_message(tmp_path: Path) -> None:
 def test_invalid_status_filter_fails(tmp_path: Path) -> None:
     result = runner.invoke(app, _args(tmp_path, "list", "--status", "bogus"))
     assert result.exit_code == 1
+
+
+def test_check_allows_the_grantee_and_denies_others(tmp_path: Path) -> None:
+    runner.invoke(app, _args(tmp_path, *REQUEST))
+    _approve(tmp_path)
+    allowed = runner.invoke(app, _args(tmp_path, "check", "--as", "alice", "--role", "db-readonly"))
+    assert allowed.exit_code == 0
+    assert "ALLOWED" in allowed.output
+    denied = runner.invoke(app, _args(tmp_path, "check", "--as", "jonas", "--role", "db-readonly"))
+    assert denied.exit_code == 1
+    assert "DENIED" in denied.output
+
+
+def test_check_json_output(tmp_path: Path) -> None:
+    runner.invoke(app, _args(tmp_path, *REQUEST))
+    _approve(tmp_path)
+    result = runner.invoke(
+        app, _args(tmp_path, "check", "--as", "alice", "--role", "db-readonly", "--json")
+    )
+    assert result.exit_code == 0
+    assert json.loads(result.output)["allowed"] is True
+
+
+def test_grants_command_lists_the_grant(tmp_path: Path) -> None:
+    runner.invoke(app, _args(tmp_path, *REQUEST))
+    _approve(tmp_path)
+    result = runner.invoke(app, _args(tmp_path, "grants"))
+    assert result.exit_code == 0
+    assert "grant #1" in result.output
+
+
+def test_audit_log_is_written_next_to_the_database(tmp_path: Path) -> None:
+    runner.invoke(app, _args(tmp_path, *REQUEST))
+    _approve(tmp_path)
+    audit = tmp_path / "state-audit.jsonl"
+    assert audit.exists()
+    assert len(audit.read_text(encoding="utf-8").splitlines()) == 3

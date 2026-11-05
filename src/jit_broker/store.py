@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from jit_broker.domain import DecisionKind, RequestRecord, RequestStatus
+from jit_broker.domain import DecisionKind, Grant, RequestRecord, RequestStatus
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS requests (
@@ -32,6 +32,16 @@ CREATE TABLE IF NOT EXISTS decisions (
     reason TEXT NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE (request_id, approver)
+);
+CREATE TABLE IF NOT EXISTS grants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL UNIQUE REFERENCES requests (id),
+    grantee TEXT NOT NULL,
+    role TEXT NOT NULL,
+    starts_at TEXT NOT NULL,
+    ends_at TEXT NOT NULL,
+    revoked_at TEXT,
+    CHECK (ends_at > starts_at)
 );
 CREATE VIEW IF NOT EXISTS request_view AS
 SELECT r.*,
@@ -152,3 +162,35 @@ class Store:
             "UPDATE requests SET status = ?, decided_at = ? WHERE id = ?",
             (status.value, _iso(decided_at), request_id),
         )
+
+    def insert_grant(
+        self,
+        *,
+        request_id: int,
+        grantee: str,
+        role: str,
+        starts_at: datetime,
+        ends_at: datetime,
+    ) -> int:
+        cursor = self._conn.execute(
+            "INSERT INTO grants (request_id, grantee, role, starts_at, ends_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (request_id, grantee, role, _iso(starts_at), _iso(ends_at)),
+        )
+        if cursor.lastrowid is None:
+            raise RuntimeError("insert did not return a row id")
+        return cursor.lastrowid
+
+    def get_active_grant(self, grantee: str, role: str, now: datetime) -> Grant | None:
+        """The grant that is valid at `now`: started, not ended, not revoked."""
+        row = self._conn.execute(
+            "SELECT * FROM grants WHERE grantee = ? AND role = ? "
+            "AND starts_at <= ? AND ends_at > ? AND revoked_at IS NULL "
+            "ORDER BY ends_at DESC LIMIT 1",
+            (grantee, role, _iso(now), _iso(now)),
+        ).fetchone()
+        return None if row is None else Grant.model_validate(dict(row))
+
+    def list_grants(self) -> list[Grant]:
+        rows = self._conn.execute("SELECT * FROM grants ORDER BY id").fetchall()
+        return [Grant.model_validate(dict(row)) for row in rows]

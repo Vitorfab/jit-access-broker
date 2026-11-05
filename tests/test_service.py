@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 import yaml
 
+from jit_broker.audit import AuditLog
 from jit_broker.domain import RequestStatus
 from jit_broker.policy import load_policy
 from jit_broker.service import MAX_PENDING_PER_USER, Broker, BrokerError
@@ -45,7 +46,8 @@ def make(tmp_path: Path) -> Iterator[Callable[..., tuple[Broker, FakeClock]]]:
         clock = FakeClock()
         store = Store(tmp_path / f"state{len(stores)}.db")
         stores.append(store)
-        return Broker(load_policy(policy_path), store, clock), clock
+        audit = AuditLog(tmp_path / f"audit{len(stores)}.jsonl")
+        return Broker(load_policy(policy_path), store, audit, clock), clock
 
     yield factory
     for store in stores:
