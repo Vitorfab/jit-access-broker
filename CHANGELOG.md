@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-05
+
 ### Added
 - Refused attempts are written to the audit log as `action_refused` (malformed ids are not logged verbatim).
 - Local REST API (`serve` command): 127.0.0.1 only, random bearer token, Host header check, no CORS, no docs endpoint.
@@ -36,6 +38,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - `check` command (exit code 0 = allowed, 1 = denied) and `grants` command.
 - Append-only JSON Lines audit log (`schema_version` 1) for requests, decisions, grants and checks.
 
-[Unreleased]: https://github.com/Vitorfab/jit-access-broker/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Vitorfab/jit-access-broker/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v0.1.0
