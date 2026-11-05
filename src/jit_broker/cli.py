@@ -268,6 +268,7 @@ def serve(
     token = secrets.token_urlsafe(32)
     typer.echo(f"Listening on http://127.0.0.1:{port} (Ctrl+C to stop)")
     typer.echo(f"API token (keep it private): {token}")
+    typer.echo(f"Dashboard: http://127.0.0.1:{port}/ (paste the token in the page)")
     typer.echo("Send it as 'Authorization: Bearer <token>' plus 'X-Acting-User: <user>'.")
     uvicorn.run(
         create_app(policy, settings.db, settings.audit, token),

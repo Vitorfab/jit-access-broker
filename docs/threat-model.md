@@ -41,3 +41,12 @@ Policy file, SQLite state (requests, decisions, grants), audit log, API token.
 ## Improvement ideas
 HMAC-signed log entries with a secret key, external anchoring of the head hash, rejecting a clock
 earlier than the last log entry, real authentication and SSO.
+## Dashboard (v1.1.0)
+| Threat | Control | Residual risk |
+|---|---|---|
+| XSS through stored values (ticket, ids, roles) | Rendering with `textContent` only, CSP `script-src 'self'` without inline script, tests that forbid dangerous sinks | A future change could add a sink; the tests are the guard |
+| Token theft in the browser | Token kept in page memory, never in URL, storage or cookies; cleared on disconnect | Any script already running on the same origin could read it |
+| Clickjacking | `frame-ancestors 'none'` and `X-Frame-Options: DENY` | None known |
+| DNS rebinding | Host header allow-list (127.0.0.1, localhost) | None known |
+| Cached sensitive data | `Cache-Control: no-store` | None known |
+| Data visible to any simulated user | Read endpoints are not restricted by role | Known limit, to be reviewed in the v1.1.0 security review |

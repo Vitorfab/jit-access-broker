@@ -1,3 +1,3 @@
 """jit-access-broker: a small Just-In-Time privileged access broker (lab project)."""
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"

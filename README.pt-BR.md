@@ -4,7 +4,7 @@ Um broker de acesso privilegiado Just-In-Time (JIT), pequeno e bem testado, para
 com recursos simulados. O usuário pede acesso elevado com justificativa, aprovadores decidem,
 o acesso expira sozinho e todo evento vai para um log de auditoria append-only e resistente a adulteração.
 
-> **Status:** v1.0.0.
+> **Status:** v1.1.0.
 > **Projeto de laboratório:** os usuários são simulados (`--as <usuario>`) e não há autenticação real.
 > Nunca use para proteger sistemas reais.
 
@@ -25,6 +25,7 @@ acesso com prazo, fluxo de aprovação e auditoria.
   (texto livre nunca é registrado; tentativas recusadas viram `action_refused`)
 - CLI com saída `--json`
 - API REST local em 127.0.0.1 com token aleatório
+- Painel local somente leitura (CSP restritiva, sem script inline, token só na memória)
 
 ## Instalação
 Requer Python 3.11+ e [uv](https://docs.astral.sh/uv/).
@@ -56,6 +57,14 @@ O estado fica em `jit-broker.db` e o log em `jit-broker-audit.jsonl` (ambos igno
 Escuta somente em `http://127.0.0.1:8765` e mostra um token aleatório. `X-Acting-User` escolhe
 um usuário simulado; isso não é autenticação.
 
+### Painel (somente leitura)
+
+    uv run jit-broker serve
+
+Abra `http://127.0.0.1:8765/`, cole o token mostrado no terminal e digite um usuário simulado.
+A página mostra pedidos, concessões com contagem regressiva e o status da cadeia de auditoria.
+É somente leitura, mantém o token só na memória e usa a mesma API local.
+
 ## Estrutura do projeto
 Veja [docs/architecture.md](docs/architecture.md) (com diagramas Mermaid).
 Formato do log: [docs/audit-log-schema.md](docs/audit-log-schema.md).
@@ -72,7 +81,7 @@ Veja [docs/threat-model.md](docs/threat-model.md), [docs/security-review-v0.2.0.
 e [SECURITY.md](SECURITY.md). Limites conhecidos estão documentados.
 
 ## Roadmap
-v1.1.0: GUI local.
+Próximo: ações de escrita no painel (ainda não planejado).
 
 ## Licença
 MIT. Veja [LICENSE](LICENSE).

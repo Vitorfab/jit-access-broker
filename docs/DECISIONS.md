@@ -71,3 +71,9 @@ v1.0.0 is the end of the CLI/API line: no new runtime behavior, only the threat 
 architecture diagrams and the Portuguese README. The framework mapping names families and tactics
 only, without control or technique identifiers, so nothing unverified is published. The local GUI
 is planned for v1.1.0 and will reuse the same Broker service.
+## D-014: Read-only dashboard served by the local API
+The dashboard is static HTML, CSS and JavaScript served by the same 127.0.0.1-only API. The files
+contain no data; everything is fetched from the token-protected endpoints. The token lives only in
+page memory (never in the URL, storage or cookies). The JavaScript renders with `textContent` only,
+and tests forbid dangerous sinks and any storage API. Every response carries a strict CSP (no inline
+script, no framing), `nosniff`, `no-store` and `no-referrer`. There are no write actions in the page.
