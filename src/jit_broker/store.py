@@ -194,3 +194,20 @@ class Store:
     def list_grants(self) -> list[Grant]:
         rows = self._conn.execute("SELECT * FROM grants ORDER BY id").fetchall()
         return [Grant.model_validate(dict(row)) for row in rows]
+
+    def get_grant(self, grant_id: int) -> Grant | None:
+        row = self._conn.execute("SELECT * FROM grants WHERE id = ?", (grant_id,)).fetchone()
+        return None if row is None else Grant.model_validate(dict(row))
+
+    def revoke_grant(self, grant_id: int, revoked_at: datetime) -> None:
+        self._conn.execute(
+            "UPDATE grants SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+            (_iso(revoked_at), grant_id),
+        )
+
+    def list_overdue_pending(self, now: datetime) -> list[RequestRecord]:
+        rows = self._conn.execute(
+            "SELECT * FROM request_view WHERE status = 'pending' AND expires_at <= ? ORDER BY id",
+            (_iso(now),),
+        ).fetchall()
+        return [RequestRecord.model_validate(dict(row)) for row in rows]

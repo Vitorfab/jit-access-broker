@@ -219,3 +219,45 @@ class Broker:
                 "ends_at": ends_at.isoformat(),
             },
         )
+
+    def revoke_grant(self, grant_id: int, admin: str) -> Grant:
+        """Revoke a grant now. Idempotent: revoking twice changes nothing and logs once."""
+        self._require_admin(admin)
+        now = self._clock()
+        with self._store.transaction():
+            grant = self._store.get_grant(grant_id)
+            if grant is None:
+                raise BrokerError("grant not found")
+            if grant.revoked_at is None:
+                self._store.revoke_grant(grant_id, now)
+                self._audit.record(
+                    "grant_revoked",
+                    admin,
+                    now,
+                    {
+                        "grant_id": grant_id,
+                        "grantee": grant.grantee,
+                        "role": grant.role,
+                        "was_active": grant.ends_at > now,
+                    },
+                )
+        updated = self._store.get_grant(grant_id)
+        if updated is None:
+            raise BrokerError("grant not found")
+        return updated
+
+    def sweep_expired(self, admin: str) -> int:
+        """Mark pending requests past their expiry as expired. Returns how many."""
+        self._require_admin(admin)
+        now = self._clock()
+        with self._store.transaction():
+            overdue = self._store.list_overdue_pending(now)
+            for request in overdue:
+                self._store.set_status(request.id, RequestStatus.EXPIRED, now)
+                self._audit.record("request_expired", "system", now, {"request_id": request.id})
+        return len(overdue)
+
+    def _require_admin(self, user: str) -> None:
+        person = self._policy.users.get(user)
+        if person is None or Capability.ADMIN not in person.capabilities:
+            raise BrokerError("this action requires an admin")

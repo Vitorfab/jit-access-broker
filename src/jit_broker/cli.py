@@ -205,3 +205,27 @@ def list_grants(ctx: typer.Context, as_json: JsonOpt = False) -> None:
     with _handled(), _open_broker(ctx) as broker:
         for grant in broker.list_grants():
             _show_grant(grant, as_json)
+
+
+@app.command()
+def revoke(
+    ctx: typer.Context,
+    grant_id: Annotated[int, typer.Argument(min=1, help="Grant id.")],
+    user: UserOpt,
+    as_json: JsonOpt = False,
+) -> None:
+    """Revoke a grant immediately (admin only). Safe to repeat."""
+    with _handled(), _open_broker(ctx) as broker:
+        grant = broker.revoke_grant(grant_id, user)
+    if as_json:
+        typer.echo(grant.model_dump_json())
+    else:
+        typer.echo(f"grant #{grant.id} revoked ({grant.grantee} -> {grant.role})")
+
+
+@app.command()
+def sweep(ctx: typer.Context, user: UserOpt) -> None:
+    """Mark overdue pending requests as expired (admin only)."""
+    with _handled(), _open_broker(ctx) as broker:
+        count = broker.sweep_expired(user)
+    typer.echo(f"Expired {count} pending request(s).")

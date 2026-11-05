@@ -40,3 +40,10 @@ transaction commits: if the log cannot be written, the change is rolled back (fa
 Free text (justification, reasons) is never written to the log.
 Known limits: refused attempts (for example a self-approval) are not logged yet; the log is not
 tamper-evident yet (hash chain planned for v0.2.0).
+## D-009: Admin-only revocation and sweep; grant expiry has no event
+Only users with the `admin` capability can revoke a grant or run the sweep. Revocation takes effect
+at the next `check` because the check reads `revoked_at` inside a transaction. Revoking twice is
+safe: the first call sets `revoked_at` and logs `grant_revoked`, later calls change and log nothing.
+The sweep marks pending requests past their expiry as `expired` (logged as `request_expired`).
+Grants that reach their end time are not rewritten: validity is always computed from the time window
+when it is checked, so no background job is needed for correctness.
