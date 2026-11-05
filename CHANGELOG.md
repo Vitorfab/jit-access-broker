@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+### Added
+- Refused attempts are written to the audit log as `action_refused` (malformed ids are not logged verbatim).
+- Local REST API (`serve` command): 127.0.0.1 only, random bearer token, Host header check, no CORS, no docs endpoint.
+- `docs/audit-log-schema.md`: audit log schema version 1.
+- `scripts/demo.ps1`: scripted demo scenario.
+
 ## [0.2.0] - 2026-11-05
 
 ### Added
