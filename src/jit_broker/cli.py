@@ -244,3 +244,34 @@ def audit_verify(ctx: typer.Context) -> None:
     with _handled():
         result = verify_log(settings.audit)
     typer.echo(f"Audit log OK: {result.entries} entries, head {result.head_hash}")
+
+
+@app.command()
+def serve(
+    ctx: typer.Context,
+    port: Annotated[
+        int, typer.Option(min=1024, max=65535, help="Port on 127.0.0.1 (never exposed).")
+    ] = 8765,
+) -> None:
+    """Run the local REST API on 127.0.0.1 only (lab only, random token per run)."""
+    import secrets
+
+    import uvicorn
+
+    from jit_broker.api import create_app
+
+    settings = ctx.obj
+    if not isinstance(settings, Settings):
+        raise RuntimeError("settings were not initialised")
+    with _handled():
+        policy = load_policy(settings.policy)
+    token = secrets.token_urlsafe(32)
+    typer.echo(f"Listening on http://127.0.0.1:{port} (Ctrl+C to stop)")
+    typer.echo(f"API token (keep it private): {token}")
+    typer.echo("Send it as 'Authorization: Bearer <token>' plus 'X-Acting-User: <user>'.")
+    uvicorn.run(
+        create_app(policy, settings.db, settings.audit, token),
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+    )

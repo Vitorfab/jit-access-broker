@@ -54,3 +54,15 @@ line that is modified, missing, reordered or has a broken link. Writers are seri
 database write lock (`BEGIN IMMEDIATE`), so two processes cannot extend the chain at once.
 Known limits (see docs/security-review-v0.2.0.md): tail truncation is not detected without an
 external copy of the head hash, and there is no signing key.
+## D-011: Refused attempts are logged
+Refusals (self-service errors, wrong approver, non-admin admin actions, bad input) are written as
+`action_refused` after the database transaction rolled back, inside a new transaction so the hash
+chain keeps a single writer. Only well-formed identifiers are copied into the log; free text never.
+A failure to write a refusal never hides the refusal itself. An expired request is logged as
+`request_expired`, not as a refusal. Known limit: anyone who can run the CLI can add noise.
+
+## D-012: Local REST API (FastAPI + uvicorn)
+The API wraps the same Broker, so no rule is duplicated. It listens on 127.0.0.1 only (the host is
+not configurable), needs a random bearer token generated at each `serve`, rejects foreign Host
+headers, has no CORS and no interactive docs. `X-Acting-User` is a lab simplification and not
+authentication. SQLite connections are opened per call in the same thread.

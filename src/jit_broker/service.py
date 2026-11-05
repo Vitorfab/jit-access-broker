@@ -4,14 +4,14 @@ import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
-from jit_broker.audit import AuditLog
+from jit_broker.audit import AuditError, AuditLog, Detail
 from jit_broker.domain import AccessResult, DecisionKind, Grant, RequestRecord, RequestStatus
 from jit_broker.policy import MIN_DURATION_MINUTES, Capability, Policy
 from jit_broker.store import Store
 
 MAX_PENDING_PER_USER = 5
 _TICKET_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,40}")
-_ROLE_PATTERN = re.compile(r"[a-z][a-z0-9-]{1,31}")
+_IDENT_PATTERN = re.compile(r"[a-z][a-z0-9-]{1,31}")
 
 Clock = Callable[[], datetime]
 
@@ -20,8 +20,19 @@ class BrokerError(Exception):
     """A request or decision was refused. The message is safe to show to the user."""
 
 
+class RequestExpiredError(BrokerError):
+    """A pending request was past its expiry when someone tried to decide it."""
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _ident_or_none(value: str | None) -> str | None:
+    """Only well-formed identifiers are copied into the audit log."""
+    if value is not None and _IDENT_PATTERN.fullmatch(value):
+        return value
+    return None
 
 
 def _clean_text(value: str, name: str, min_len: int, max_len: int) -> str:
@@ -42,6 +53,8 @@ class Broker:
         self._audit = audit
         self._clock = clock
 
+    # ---- public use cases (each logs refused attempts) ----
+
     def request_access(
         self,
         user: str,
@@ -49,6 +62,87 @@ class Broker:
         duration_minutes: int,
         justification: str,
         ticket: str | None = None,
+    ) -> RequestRecord:
+        try:
+            return self._request_access(user, role, duration_minutes, justification, ticket)
+        except BrokerError as exc:
+            self._log_refusal("request", user, exc, role=role)
+            raise
+
+    def approve(self, request_id: int, approver: str, reason: str) -> RequestRecord:
+        return self._decide_logged(request_id, approver, DecisionKind.APPROVE, reason)
+
+    def deny(self, request_id: int, approver: str, reason: str) -> RequestRecord:
+        return self._decide_logged(request_id, approver, DecisionKind.DENY, reason)
+
+    def check_access(self, user: str, role: str) -> AccessResult:
+        """Is `user` allowed `role` right now? Decided at call time, then logged."""
+        try:
+            return self._check_access(user, role)
+        except BrokerError as exc:
+            self._log_refusal("check", user, exc, role=role)
+            raise
+
+    def revoke_grant(self, grant_id: int, admin: str) -> Grant:
+        """Revoke a grant now. Idempotent: revoking twice changes nothing and logs once."""
+        try:
+            return self._revoke_grant(grant_id, admin)
+        except BrokerError as exc:
+            self._log_refusal("revoke", admin, exc, target_id=grant_id)
+            raise
+
+    def sweep_expired(self, admin: str) -> int:
+        """Mark pending requests past their expiry as expired. Returns how many."""
+        try:
+            return self._sweep_expired(admin)
+        except BrokerError as exc:
+            self._log_refusal("sweep", admin, exc)
+            raise
+
+    def list_requests(self, status: RequestStatus | None = None) -> list[RequestRecord]:
+        return self._store.list_requests(status)
+
+    def list_grants(self) -> list[Grant]:
+        return self._store.list_grants()
+
+    # ---- refusal logging ----
+
+    def _log_refusal(
+        self,
+        action: str,
+        actor: str,
+        exc: BrokerError,
+        target_id: int | None = None,
+        role: str | None = None,
+    ) -> None:
+        # An expired request is logged as `request_expired`, not as a refusal.
+        if isinstance(exc, RequestExpiredError):
+            return
+        details: dict[str, Detail] = {
+            "action": action,
+            "reason": str(exc),
+            "target_id": target_id,
+            "role": _ident_or_none(role),
+        }
+        try:
+            # The write lock keeps the hash chain consistent with other writers.
+            with self._store.transaction():
+                self._audit.record(
+                    "action_refused", _ident_or_none(actor) or "invalid", self._clock(), details
+                )
+        except AuditError:
+            # The action is refused anyway: never let a logging problem hide that.
+            return
+
+    # ---- implementations ----
+
+    def _request_access(
+        self,
+        user: str,
+        role: str,
+        duration_minutes: int,
+        justification: str,
+        ticket: str | None,
     ) -> RequestRecord:
         if user not in self._policy.users:
             raise BrokerError("unknown user")
@@ -92,17 +186,10 @@ class Broker:
             )
         return self._reload(new_id)
 
-    def approve(self, request_id: int, approver: str, reason: str) -> RequestRecord:
-        return self._decide(request_id, approver, DecisionKind.APPROVE, reason)
-
-    def deny(self, request_id: int, approver: str, reason: str) -> RequestRecord:
-        return self._decide(request_id, approver, DecisionKind.DENY, reason)
-
-    def check_access(self, user: str, role: str) -> AccessResult:
-        """Is `user` allowed `role` right now? Decided at call time, then logged."""
+    def _check_access(self, user: str, role: str) -> AccessResult:
         if user not in self._policy.users:
             raise BrokerError("unknown user")
-        if not _ROLE_PATTERN.fullmatch(role):
+        if not _IDENT_PATTERN.fullmatch(role):
             raise BrokerError("invalid role")
         now = self._clock()
         with self._store.transaction():
@@ -124,17 +211,60 @@ class Broker:
             ends_at=grant.ends_at if grant is not None else None,
         )
 
-    def list_requests(self, status: RequestStatus | None = None) -> list[RequestRecord]:
-        return self._store.list_requests(status)
+    def _revoke_grant(self, grant_id: int, admin: str) -> Grant:
+        self._require_admin(admin)
+        now = self._clock()
+        with self._store.transaction():
+            grant = self._store.get_grant(grant_id)
+            if grant is None:
+                raise BrokerError("grant not found")
+            if grant.revoked_at is None:
+                self._store.revoke_grant(grant_id, now)
+                self._audit.record(
+                    "grant_revoked",
+                    admin,
+                    now,
+                    {
+                        "grant_id": grant_id,
+                        "grantee": grant.grantee,
+                        "role": grant.role,
+                        "was_active": grant.ends_at > now,
+                    },
+                )
+        updated = self._store.get_grant(grant_id)
+        if updated is None:
+            raise BrokerError("grant not found")
+        return updated
 
-    def list_grants(self) -> list[Grant]:
-        return self._store.list_grants()
+    def _sweep_expired(self, admin: str) -> int:
+        self._require_admin(admin)
+        now = self._clock()
+        with self._store.transaction():
+            overdue = self._store.list_overdue_pending(now)
+            for request in overdue:
+                self._store.set_status(request.id, RequestStatus.EXPIRED, now)
+                self._audit.record("request_expired", "system", now, {"request_id": request.id})
+        return len(overdue)
+
+    def _require_admin(self, user: str) -> None:
+        person = self._policy.users.get(user)
+        if person is None or Capability.ADMIN not in person.capabilities:
+            raise BrokerError("this action requires an admin")
 
     def _reload(self, request_id: int) -> RequestRecord:
         record = self._store.get_request(request_id)
         if record is None:
             raise BrokerError("request not found")
         return record
+
+    def _decide_logged(
+        self, request_id: int, approver: str, kind: DecisionKind, reason: str
+    ) -> RequestRecord:
+        try:
+            return self._decide(request_id, approver, kind, reason)
+        except BrokerError as exc:
+            self._log_refusal(kind.value, approver, exc, target_id=request_id)
+            raise
 
     def _decide(
         self, request_id: int, approver: str, kind: DecisionKind, reason: str
@@ -160,7 +290,7 @@ class Broker:
             else:
                 self._apply_decision(request, approver, kind, text, now)
         if expired:
-            raise BrokerError("request expired before it was decided")
+            raise RequestExpiredError("request expired before it was decided")
         return self._reload(request_id)
 
     def _apply_decision(
@@ -219,45 +349,3 @@ class Broker:
                 "ends_at": ends_at.isoformat(),
             },
         )
-
-    def revoke_grant(self, grant_id: int, admin: str) -> Grant:
-        """Revoke a grant now. Idempotent: revoking twice changes nothing and logs once."""
-        self._require_admin(admin)
-        now = self._clock()
-        with self._store.transaction():
-            grant = self._store.get_grant(grant_id)
-            if grant is None:
-                raise BrokerError("grant not found")
-            if grant.revoked_at is None:
-                self._store.revoke_grant(grant_id, now)
-                self._audit.record(
-                    "grant_revoked",
-                    admin,
-                    now,
-                    {
-                        "grant_id": grant_id,
-                        "grantee": grant.grantee,
-                        "role": grant.role,
-                        "was_active": grant.ends_at > now,
-                    },
-                )
-        updated = self._store.get_grant(grant_id)
-        if updated is None:
-            raise BrokerError("grant not found")
-        return updated
-
-    def sweep_expired(self, admin: str) -> int:
-        """Mark pending requests past their expiry as expired. Returns how many."""
-        self._require_admin(admin)
-        now = self._clock()
-        with self._store.transaction():
-            overdue = self._store.list_overdue_pending(now)
-            for request in overdue:
-                self._store.set_status(request.id, RequestStatus.EXPIRED, now)
-                self._audit.record("request_expired", "system", now, {"request_id": request.id})
-        return len(overdue)
-
-    def _require_admin(self, user: str) -> None:
-        person = self._policy.users.get(user)
-        if person is None or Capability.ADMIN not in person.capabilities:
-            raise BrokerError("this action requires an admin")
