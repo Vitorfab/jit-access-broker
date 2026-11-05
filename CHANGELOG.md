@@ -5,6 +5,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-05
+
 ### Added
 - Repository scaffold, CI, security tooling and project documentation.
 - Strict YAML policy models and loader (deny-by-default, no unknown fields).
@@ -16,3 +18,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - Time-bound grants created by the final approval; expiry is enforced at check time.
 - `check` command (exit code 0 = allowed, 1 = denied) and `grants` command.
 - Append-only JSON Lines audit log (`schema_version` 1) for requests, decisions, grants and checks.
+
+[Unreleased]: https://github.com/Vitorfab/jit-access-broker/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v0.1.0
