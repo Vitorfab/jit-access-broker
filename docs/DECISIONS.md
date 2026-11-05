@@ -47,3 +47,10 @@ safe: the first call sets `revoked_at` and logs `grant_revoked`, later calls cha
 The sweep marks pending requests past their expiry as `expired` (logged as `request_expired`).
 Grants that reach their end time are not rewritten: validity is always computed from the time window
 when it is checked, so no background job is needed for correctness.
+## D-010: Hash-chained audit log
+Each entry stores `prev_hash` and `hash = SHA-256(canonical JSON of the entry without hash)`.
+The first entry uses 64 zeros as `prev_hash`. `audit verify` walks the file and reports the first
+line that is modified, missing, reordered or has a broken link. Writers are serialized by the
+database write lock (`BEGIN IMMEDIATE`), so two processes cannot extend the chain at once.
+Known limits (see docs/security-review-v0.2.0.md): tail truncation is not detected without an
+external copy of the head hash, and there is no signing key.
