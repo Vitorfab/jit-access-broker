@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+### Added
+- `revoke` command: admin-only, immediate, idempotent grant revocation (logged as `grant_revoked`).
+- `sweep` command: admin-only, marks overdue pending requests as expired.
+- Integration tests for the full lifecycle through the CLI.
+
 ## [0.1.0] - 2026-11-05
 
 ### Added
