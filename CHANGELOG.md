@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - `revoke` command: admin-only, immediate, idempotent grant revocation (logged as `grant_revoked`).
 - `sweep` command: admin-only, marks overdue pending requests as expired.
 - Integration tests for the full lifecycle through the CLI.
+- Tamper-evident audit log: every entry carries `prev_hash` and `hash` (SHA-256 chain).
+- `audit verify` command: detects modified, deleted or reordered entries (exit 1 on failure).
+- Security review document for v0.2.0.
+- Note: audit logs written by v0.1.0 have no hashes and are refused; delete them in the lab.
 
 ## [0.1.0] - 2026-11-05
 

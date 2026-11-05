@@ -9,7 +9,7 @@ from typing import Annotated
 import typer
 
 from jit_broker import __version__
-from jit_broker.audit import AuditError, AuditLog
+from jit_broker.audit import AuditError, AuditLog, verify_log
 from jit_broker.domain import Grant, RequestRecord, RequestStatus
 from jit_broker.policy import PolicyError, load_policy
 from jit_broker.service import Broker, BrokerError
@@ -229,3 +229,18 @@ def sweep(ctx: typer.Context, user: UserOpt) -> None:
     with _handled(), _open_broker(ctx) as broker:
         count = broker.sweep_expired(user)
     typer.echo(f"Expired {count} pending request(s).")
+
+
+audit_app = typer.Typer(help="Audit log tools.", no_args_is_help=True)
+app.add_typer(audit_app, name="audit")
+
+
+@audit_app.command("verify")
+def audit_verify(ctx: typer.Context) -> None:
+    """Verify the hash chain of the audit log (exit 1 if it was tampered with)."""
+    settings = ctx.obj
+    if not isinstance(settings, Settings):
+        raise RuntimeError("settings were not initialised")
+    with _handled():
+        result = verify_log(settings.audit)
+    typer.echo(f"Audit log OK: {result.entries} entries, head {result.head_hash}")
