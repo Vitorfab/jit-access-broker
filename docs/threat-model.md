@@ -50,3 +50,17 @@ earlier than the last log entry, real authentication and SSO.
 | DNS rebinding | Host header allow-list (127.0.0.1, localhost) | None known |
 | Cached sensitive data | `Cache-Control: no-store` | None known |
 | Data visible to any simulated user | Read endpoints are not restricted by role | Known limit, to be reviewed in the v1.1.0 security review |
+## Identity and sessions (v1.2.0)
+| Threat | Control | Residual risk |
+|---|---|---|
+| Password guessing | Argon2id hashes, lockout after 5 failures for 15 minutes, generic error, dummy hash verification for unknown or locked accounts | An attacker can lock a victim out (DoS) |
+| Session theft | Random 256-bit token, HttpOnly cookie, only the SHA-256 stored, idle (15 min) and absolute (8 h) limits, server-side logout | No TLS on localhost; any local process that reads the cookie can reuse it |
+| CSRF | `SameSite=Strict`, `X-CSRF-Token` header compared in constant time, Origin must match Host, no CORS | None known |
+| Account enumeration | One message for every login failure | Differences in the audit log are visible to operators only |
+| Information exposure | Reads filtered by profile; `audit verify` admin only | Role lists and policy are not editable or visible in the GUI yet |
+| Privilege escalation through accounts | Accounts only for users that exist in the policy; permissions still come from the policy | Whoever edits the policy file or the database controls everything |
+
+## Production notes
+This lab deliberately has no SSO, no MFA and no TLS. A real deployment should use an identity
+provider (SSO) with MFA, HTTPS everywhere with the `Secure` cookie flag, per-IP rate limiting,
+password reset and rotation, and centralized log shipping.

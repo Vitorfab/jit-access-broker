@@ -49,3 +49,13 @@ head hash on success.
 - No signing key: someone who can rewrite the whole file can rebuild a consistent chain.
 - Refusals can be produced by anyone who can run the CLI, so the log can grow from noise.
 - Logs written by v0.1.0 have no hashes and are refused.
+## Events added in v1.2.0
+| Event | Actor | Details |
+|---|---|---|
+| `account_created` | `system` | `username` |
+| `login_succeeded` | user | none |
+| `login_failed` | user, or `invalid` when the id was malformed | `known_account`, `locked` |
+| `account_locked` | user | `minutes` |
+| `logout` | user | none |
+
+Passwords, session tokens and CSRF tokens are never logged.

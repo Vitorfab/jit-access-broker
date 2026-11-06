@@ -10,6 +10,7 @@ import typer
 
 from jit_broker import __version__
 from jit_broker.audit import AuditError, AuditLog, verify_log
+from jit_broker.auth import Auth
 from jit_broker.domain import Grant, RequestRecord, RequestStatus
 from jit_broker.policy import PolicyError, load_policy
 from jit_broker.service import Broker, BrokerError
@@ -253,9 +254,7 @@ def serve(
         int, typer.Option(min=1024, max=65535, help="Port on 127.0.0.1 (never exposed).")
     ] = 8765,
 ) -> None:
-    """Run the local REST API on 127.0.0.1 only (lab only, random token per run)."""
-    import secrets
-
+    """Run the local API and dashboard on 127.0.0.1 only (lab only, login required)."""
     import uvicorn
 
     from jit_broker.api import create_app
@@ -265,14 +264,37 @@ def serve(
         raise RuntimeError("settings were not initialised")
     with _handled():
         policy = load_policy(settings.policy)
-    token = secrets.token_urlsafe(32)
     typer.echo(f"Listening on http://127.0.0.1:{port} (Ctrl+C to stop)")
-    typer.echo(f"API token (keep it private): {token}")
-    typer.echo(f"Dashboard: http://127.0.0.1:{port}/ (paste the token in the page)")
-    typer.echo("Send it as 'Authorization: Bearer <token>' plus 'X-Acting-User: <user>'.")
+    typer.echo("Sign in with an account created by: jit-broker user create <user>")
     uvicorn.run(
-        create_app(policy, settings.db, settings.audit, token),
+        create_app(policy, settings.db, settings.audit),
         host="127.0.0.1",
         port=port,
         log_level="warning",
     )
+
+
+user_app = typer.Typer(help="Account tools (local operator).", no_args_is_help=True)
+app.add_typer(user_app, name="user")
+
+
+@user_app.command("create")
+def user_create(
+    ctx: typer.Context,
+    username: Annotated[str, typer.Argument(help="User id from the policy.")],
+) -> None:
+    """Create a login account. The password is asked without echo, never as an argument."""
+    settings = ctx.obj
+    if not isinstance(settings, Settings):
+        raise RuntimeError("settings were not initialised")
+    password = typer.prompt(
+        "Password (12-128 characters)", hide_input=True, confirmation_prompt=True
+    )
+    with _handled():
+        policy = load_policy(settings.policy)
+        store = Store(settings.db)
+        try:
+            Auth(policy, store, AuditLog(settings.audit)).create_account(username, password)
+        finally:
+            store.close()
+    typer.echo(f"Account created for {username}.")

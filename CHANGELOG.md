@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
+
+### Added
+- Real login: local accounts with Argon2id passwords, server-side sessions in an HttpOnly SameSite=Strict cookie, CSRF protection, lockout after repeated failures and login events in the audit log.
+- user create command (password prompted without echo).
+- Reads filtered by profile; audit verify is admin only.
+- Security review for v1.2.0.
+
+### Changed
+- The API and dashboard no longer accept X-Acting-User or the shared bearer token.
+- The policy loader rejects duplicate YAML keys.
+
 ## [1.1.0] - 2026-11-05
 
 ### Added
@@ -53,7 +65,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - `check` command (exit code 0 = allowed, 1 = denied) and `grants` command.
 - Append-only JSON Lines audit log (`schema_version` 1) for requests, decisions, grants and checks.
 
-[Unreleased]: https://github.com/Vitorfab/jit-access-broker/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Vitorfab/jit-access-broker/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v1.0.0
 [0.3.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v0.3.0

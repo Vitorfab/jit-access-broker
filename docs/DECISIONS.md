@@ -77,3 +77,15 @@ contain no data; everything is fetched from the token-protected endpoints. The t
 page memory (never in the URL, storage or cookies). The JavaScript renders with `textContent` only,
 and tests forbid dangerous sinks and any storage API. Every response carries a strict CSP (no inline
 script, no framing), `nosniff`, `no-store` and `no-referrer`. There are no write actions in the page.
+## D-015: Local accounts with Argon2id, server-side sessions
+Accounts live in SQLite (separate from the policy) and are created only by the local operator
+(`user create`, password prompted without echo). Passwords use Argon2id (argon2-cffi defaults).
+A session token is random and held in an HttpOnly, SameSite=Strict cookie; only its SHA-256 is
+stored. Limits: 15 minutes idle (user actions only) and 8 hours absolute. Login failures lock the
+account for 15 minutes after 5 attempts. No SSO and no MFA, on purpose, to keep the lab small;
+the docs say production needs both.
+
+## D-016: Authorization stays in the server; X-Acting-User removed
+The API and dashboard use the session user only. Reads are filtered by profile in `Broker`.
+State-changing calls need the CSRF header and a same-origin Origin. The CLI keeps `--as` as a
+local operator tool. Duplicate YAML keys are now rejected by the policy loader.

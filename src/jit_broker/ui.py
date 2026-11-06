@@ -1,7 +1,7 @@
 # ruff: noqa: E501
-"""Read-only local dashboard (lab only).
+"""Local dashboard (lab only).
 
-Static files only: they contain no data. All data comes from the token-protected API, and the
+Static files only: they contain no data. All data comes from the session-protected API, and the
 page renders it with textContent (never innerHTML). Every response gets strict security headers.
 """
 
@@ -34,21 +34,22 @@ INDEX_HTML = """<!doctype html>
 <body>
 <header>
 <h1>jit-access-broker</h1>
-<p class="badge">Lab dashboard &middot; read-only &middot; simulated users, not real authentication</p>
+<p class="badge">Lab dashboard &middot; local accounts only &middot; no SSO, MFA or TLS</p>
 </header>
 <main>
 <section id="login">
-<form id="login-form" autocomplete="off">
-<label for="token">API token (printed by <code>jit-broker serve</code>)</label>
-<input id="token" type="password" autocomplete="off" spellcheck="false">
-<label for="user">Simulated user id</label>
-<input id="user" type="text" autocomplete="off" spellcheck="false" placeholder="for example: alice">
-<button type="submit">Connect</button>
+<form id="login-form">
+<label for="user">User id</label>
+<input id="user" type="text" autocomplete="username" spellcheck="false" placeholder="for example: alice">
+<label for="password">Password</label>
+<input id="password" type="password" autocomplete="current-password">
+<button type="submit">Sign in</button>
 <p id="login-error" role="alert"></p>
 </form>
+<p class="muted">Accounts are created by the operator with <code>jit-broker user create</code>.</p>
 </section>
 <section id="dashboard" hidden>
-<div class="bar"><span id="who"></span><button id="disconnect" type="button">Disconnect</button></div>
+<div class="bar"><span id="who"></span><button id="signout" type="button">Sign out</button></div>
 <div class="cards">
 <div class="card"><h2>Pending requests</h2><p id="stat-pending" class="big">-</p></div>
 <div class="card"><h2>Active grants</h2><p id="stat-grants" class="big">-</p></div>
@@ -64,7 +65,7 @@ INDEX_HTML = """<!doctype html>
 <thead><tr><th>Request</th><th>User</th><th>Role</th><th>Minutes</th><th>Status</th><th>Approvals</th></tr></thead>
 <tbody id="requests-body"></tbody>
 </table>
-<p class="muted">The countdown uses your browser clock and is informative only: the server decides access at check time.</p>
+<p class="muted">You only see what you requested, approve or administer. The countdown uses your browser clock and is informative only: the server decides access at check time.</p>
 </section>
 </main>
 <script src="/ui/app.js"></script>
@@ -102,7 +103,7 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line
 APP_JS = r"""
 "use strict";
 (function () {
-  const state = { token: null, user: null, refreshTimer: null, tickTimer: null };
+  const state = { csrf: null, caps: [], refreshTimer: null, tickTimer: null };
   const KNOWN_STATUS = ["pending", "approved", "denied", "expired"];
   const $ = (id) => document.getElementById(id);
 
@@ -125,12 +126,17 @@ APP_JS = r"""
     return Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m " + (s % 60) + "s";
   }
 
-  function call(path) {
-    return fetch(path, {
-      headers: { "Authorization": "Bearer " + state.token, "X-Acting-User": state.user },
-      cache: "no-store",
-      credentials: "omit"
-    }).then((response) =>
+  function call(path, options) {
+    const init = { method: "GET", headers: {}, cache: "no-store", credentials: "same-origin" };
+    if (options && options.method === "POST") {
+      init.method = "POST";
+      init.headers["X-CSRF-Token"] = state.csrf || "";
+      if (options.body !== undefined) {
+        init.headers["Content-Type"] = "application/json";
+        init.body = JSON.stringify(options.body);
+      }
+    }
+    return fetch(path, init).then((response) =>
       response.json().catch(() => ({})).then((body) => ({ status: response.status, body: body }))
     );
   }
@@ -140,7 +146,7 @@ APP_JS = r"""
     tbody.replaceChildren();
     if (rows.length === 0) {
       const tr = el("tr");
-      const td = el("td", "Nothing yet", "muted");
+      const td = el("td", "Nothing to show", "muted");
       td.colSpan = 6;
       tr.appendChild(td);
       tbody.appendChild(tr);
@@ -181,7 +187,10 @@ APP_JS = r"""
 
   function renderAudit(res) {
     const node = $("stat-audit");
-    if (res.status === 200) {
+    if (res.status === 0) {
+      node.textContent = "Visible to admins only";
+      node.className = "big small muted";
+    } else if (res.status === 200) {
       node.textContent = "OK: " + res.body.entries + " entries, head " + String(res.body.head_hash).slice(0, 12);
       node.className = "big small ok";
     } else if (res.status === 409 && String(res.body.detail).indexOf("not found") >= 0) {
@@ -202,51 +211,69 @@ APP_JS = r"""
     });
   }
 
-  function disconnect(message) {
+  function showLogin(message) {
     clearInterval(state.refreshTimer);
     clearInterval(state.tickTimer);
-    state.token = null;
-    state.user = null;
+    state.csrf = null;
+    state.caps = [];
     $("dashboard").hidden = true;
     $("login").hidden = false;
     $("login-error").textContent = message;
   }
 
   function refresh() {
-    return Promise.all([call("/requests"), call("/grants"), call("/audit/verify")]).then((res) => {
-      if (res.some((r) => r.status === 401)) { disconnect("Invalid token."); return false; }
-      if (res[0].status !== 200 || res[1].status !== 200) { disconnect("The API refused the request."); return false; }
+    const isAdmin = state.caps.indexOf("admin") >= 0;
+    const audit = isAdmin ? call("/audit/verify") : Promise.resolve({ status: 0, body: {} });
+    return Promise.all([call("/requests"), call("/grants"), audit]).then((res) => {
+      if (res.some((r) => r.status === 401)) { showLogin("Session ended. Sign in again."); return false; }
+      if (res[0].status !== 200 || res[1].status !== 200) { showLogin("The API refused the request."); return false; }
       renderRequests(res[0].body);
       renderGrants(res[1].body);
       renderAudit(res[2]);
       return true;
-    }).catch(() => { disconnect("Cannot reach the API."); return false; });
+    }).catch(() => { showLogin("Cannot reach the API."); return false; });
   }
 
-  function connect(event) {
-    event.preventDefault();
-    const token = $("token").value.trim();
-    const user = $("user").value.trim();
-    $("login-error").textContent = "";
-    if (!token || !/^[a-z][a-z0-9-]{1,31}$/.test(user)) {
-      $("login-error").textContent = "Enter the token and a valid user id.";
-      return;
-    }
-    state.token = token;
-    state.user = user;
-    $("token").value = "";
+  function enter(profile) {
+    state.csrf = profile.csrf_token;
+    state.caps = profile.capabilities;
+    $("who").textContent = "Signed in as " + profile.display_name + " (" + profile.username + ")";
     refresh().then((ok) => {
       if (!ok) { return; }
       $("login").hidden = true;
       $("dashboard").hidden = false;
-      $("who").textContent = "Viewing as " + user + " (simulated)";
+      clearInterval(state.refreshTimer);
+      clearInterval(state.tickTimer);
       state.refreshTimer = setInterval(refresh, 5000);
       state.tickTimer = setInterval(tick, 1000);
     });
   }
 
-  $("login-form").addEventListener("submit", connect);
-  $("disconnect").addEventListener("click", () => disconnect(""));
+  function signIn(event) {
+    event.preventDefault();
+    const username = $("user").value.trim();
+    const password = $("password").value;
+    $("login-error").textContent = "";
+    if (!/^[a-z][a-z0-9-]{1,31}$/.test(username) || password.length === 0) {
+      $("login-error").textContent = "Enter a valid user id and your password.";
+      return;
+    }
+    $("password").value = "";
+    call("/auth/login", { method: "POST", body: { username: username, password: password } })
+      .then((res) => {
+        if (res.status === 200) { enter(res.body); }
+        else { $("login-error").textContent = res.status === 401 ? "Invalid credentials." : "Sign-in failed."; }
+      })
+      .catch(() => { $("login-error").textContent = "Cannot reach the API."; });
+  }
+
+  $("login-form").addEventListener("submit", signIn);
+  $("signout").addEventListener("click", () => {
+    call("/auth/logout", { method: "POST" }).finally(() => showLogin(""));
+  });
+  call("/auth/me")
+    .then((res) => { if (res.status === 200) { enter(res.body); } else { showLogin(""); } })
+    .catch(() => showLogin("Cannot reach the API."));
 })();
 """
 

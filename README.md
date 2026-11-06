@@ -6,8 +6,8 @@ and every event goes to an append-only, tamper-evident audit log.
 
 Portuguese version: [README.pt-BR.md](README.pt-BR.md)
 
-> **Status:** v1.1.0.
-> **Lab project:** users are simulated (`--as <user>`) and there is no real authentication.
+> **Status:** v1.2.0.
+> **Lab project:** the CLI trusts `--as <user>` (local operator tool); the API and dashboard need a login. No SSO, MFA or TLS.
 > Never use it to protect real systems.
 
 ## Why it exists
@@ -26,8 +26,8 @@ time-bound access, approval workflows and auditability.
 - Append-only JSON Lines audit log with a SHA-256 hash chain and `audit verify`
   (free text is never logged; refused attempts are logged as `action_refused`)
 - CLI with `--json` output
-- Local REST API on 127.0.0.1 with a random bearer token
-- Read-only local dashboard (strict CSP, no inline scripts, token kept in memory only)
+- Local REST API on 127.0.0.1 with real login: Argon2id passwords, sessions, CSRF protection, lockout
+- Read-only local dashboard (strict CSP, no inline scripts, reads filtered by profile)
 
 ## Install
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
@@ -56,21 +56,21 @@ State is stored in `jit-broker.db` and the audit log in `jit-broker-audit.jsonl`
 
     uv run jit-broker serve
 
-It listens on `http://127.0.0.1:8765` only and prints a random token. Example:
+It listens on `http://127.0.0.1:8765` only and needs a login. Create accounts first with `uv run jit-broker user create alice` (the password is asked without echo). Example:
 
-    curl.exe -H "Authorization: Bearer <token>" -H "X-Acting-User: alice" http://127.0.0.1:8765/requests
+    POST /auth/login with a JSON body {"username": ..., "password": ...} sets an HttpOnly session cookie
 
 Endpoints: `GET /health`, `POST /requests`, `GET /requests`, `POST /requests/{id}/approve`,
 `POST /requests/{id}/deny`, `GET /grants`, `POST /check`, `POST /grants/{id}/revoke`,
-`POST /sweep`, `GET /audit/verify`. `X-Acting-User` selects a simulated user; it is not authentication.
+`POST /sweep`, `GET /audit/verify` (admin), `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`. Writes need the `X-CSRF-Token` header.
 
 ### Dashboard (read-only)
 
     uv run jit-broker serve
 
-Open `http://127.0.0.1:8765/`, paste the token printed in the terminal and type a simulated user id.
+Create accounts with `uv run jit-broker user create <user>`, open `http://127.0.0.1:8765/` and sign in.
 The page shows requests, grants with a live countdown and the audit-chain status. It is read-only,
-keeps the token in memory only and talks to the same local API.
+uses an HttpOnly session cookie and talks to the same local API.
 
 ## Project structure
 See [docs/architecture.md](docs/architecture.md) (with Mermaid diagrams).
