@@ -21,7 +21,8 @@ flowchart LR
 | `audit.py` | Append-only, hash-chained JSON Lines log and its verifier. |
 | `service.py` | Use cases: request, approve, deny, check, revoke, sweep. No printing. |
 | `cli.py` | Translates commands into service calls. |
-| `api.py` | Local REST API over the same service. |
+| `api.py` | Local REST API over the same service, with session login. |
+| `auth.py` | Local accounts, Argon2id hashing, sessions and login throttling. |
 
 ## Request lifecycle
 ```mermaid

@@ -349,3 +349,24 @@ class Broker:
                 "ends_at": ends_at.isoformat(),
             },
         )
+
+    def visible_requests(
+        self, user: str, status: RequestStatus | None = None
+    ) -> list[RequestRecord]:
+        """Requests this user may see: own, those of roles they approve, or all for admins."""
+        return [
+            r for r in self._store.list_requests(status) if self._can_see(user, r.role, r.requester)
+        ]
+
+    def visible_grants(self, user: str) -> list[Grant]:
+        """Grants this user may see, with the same rule as visible_requests."""
+        return [g for g in self._store.list_grants() if self._can_see(user, g.role, g.grantee)]
+
+    def _can_see(self, user: str, role: str, owner: str) -> bool:
+        person = self._policy.users.get(user)
+        if person is None:
+            return False
+        if user == owner or Capability.ADMIN in person.capabilities:
+            return True
+        role_def = self._policy.roles.get(role)
+        return role_def is not None and user in role_def.approvers

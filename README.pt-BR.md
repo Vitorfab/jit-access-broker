@@ -4,7 +4,7 @@ Um broker de acesso privilegiado Just-In-Time (JIT), pequeno e bem testado, para
 com recursos simulados. O usuário pede acesso elevado com justificativa, aprovadores decidem,
 o acesso expira sozinho e todo evento vai para um log de auditoria append-only e resistente a adulteração.
 
-> **Status:** v1.1.0.
+> **Status:** v1.2.0.
 > **Projeto de laboratório:** os usuários são simulados (`--as <usuario>`) e não há autenticação real.
 > Nunca use para proteger sistemas reais.
 
@@ -24,7 +24,7 @@ acesso com prazo, fluxo de aprovação e auditoria.
 - Log de auditoria JSON Lines append-only com cadeia de hash SHA-256 e `audit verify`
   (texto livre nunca é registrado; tentativas recusadas viram `action_refused`)
 - CLI com saída `--json`
-- API REST local em 127.0.0.1 com token aleatório
+- API REST local em 127.0.0.1 com login real: senhas Argon2id, sessões, proteção CSRF e bloqueio por tentativas
 - Painel local somente leitura (CSP restritiva, sem script inline, token só na memória)
 
 ## Instalação
@@ -54,8 +54,8 @@ O estado fica em `jit-broker.db` e o log em `jit-broker-audit.jsonl` (ambos igno
 
     uv run jit-broker serve
 
-Escuta somente em `http://127.0.0.1:8765` e mostra um token aleatório. `X-Acting-User` escolhe
-um usuário simulado; isso não é autenticação.
+Escuta somente em `http://127.0.0.1:8765` e exige login (senha Argon2id e sessão por cookie).
+Crie as contas com `uv run jit-broker user create <usuario>`. Sem SSO, MFA e TLS: apenas laboratório.
 
 ### Painel (somente leitura)
 

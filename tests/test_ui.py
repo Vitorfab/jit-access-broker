@@ -11,7 +11,7 @@ EXAMPLE = Path(__file__).resolve().parents[1] / "policies" / "example.yaml"
 
 
 def _client(tmp_path: Path) -> TestClient:
-    api = create_app(load_policy(EXAMPLE), tmp_path / "state.db", tmp_path / "audit.jsonl", "k")
+    api = create_app(load_policy(EXAMPLE), tmp_path / "state.db", tmp_path / "audit.jsonl")
     return TestClient(api, base_url="http://127.0.0.1")
 
 
@@ -46,11 +46,15 @@ def test_security_headers_are_also_on_api_responses(tmp_path: Path) -> None:
     assert "content-security-policy" in response.headers
 
 
-def test_shell_holds_no_data_and_api_still_needs_the_token(tmp_path: Path) -> None:
+def test_shell_holds_no_data_and_api_needs_a_session(tmp_path: Path) -> None:
     client = _client(tmp_path)
     assert client.get("/requests").status_code == 401
     assert client.get("/grants").status_code == 401
     assert "alice" not in INDEX_HTML.replace("for example: alice", "")
+
+
+def test_login_form_uses_a_password_field() -> None:
+    assert 'type="password"' in INDEX_HTML
 
 
 def test_index_has_no_inline_script_or_event_handlers() -> None:
@@ -71,8 +75,14 @@ def test_app_js_never_uses_dangerous_sinks(sink: str) -> None:
 @pytest.mark.parametrize(
     "store", ["localStorage", "sessionStorage", "document.cookie", "indexedDB"]
 )
-def test_app_js_never_persists_the_token(store: str) -> None:
+def test_app_js_never_stores_secrets_in_the_browser(store: str) -> None:
     assert store not in APP_JS
+
+
+def test_app_js_uses_csrf_header_and_not_the_old_acting_user_header() -> None:
+    assert "X-CSRF-Token" in APP_JS
+    assert "X-Acting-User" not in APP_JS
+    assert "Authorization" not in APP_JS
 
 
 def test_foreign_host_is_rejected_for_the_dashboard(tmp_path: Path) -> None:

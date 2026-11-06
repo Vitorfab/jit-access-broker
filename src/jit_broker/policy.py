@@ -5,10 +5,11 @@ listed as requester/approver for it, gets nothing. Loading is strict: unknown
 fields, wrong types and broken references are rejected.
 """
 
+from collections.abc import Hashable
 from datetime import timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 import yaml
 from pydantic import (
@@ -124,7 +125,8 @@ def load_policy(path: Path) -> Policy:
     if size > MAX_POLICY_FILE_BYTES:
         raise PolicyError("policy file is too large")
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        raw = yaml.load(text, Loader=_UniqueKeyLoader)  # noqa: S506  # nosec B506
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise PolicyError("policy file is not valid YAML") from exc
     if not isinstance(raw, dict):
@@ -133,3 +135,18 @@ def load_policy(path: Path) -> Policy:
         return Policy.model_validate(raw)
     except ValidationError as exc:
         raise PolicyError(_format_errors(exc)) from exc
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """SafeLoader that rejects duplicate mapping keys instead of keeping the last one."""
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Hashable, Any]:
+        seen: set[Hashable] = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if not isinstance(key, Hashable):
+                continue
+            if key in seen:
+                raise yaml.YAMLError("duplicate key")
+            seen.add(key)
+        return super().construct_mapping(node, deep=deep)

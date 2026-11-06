@@ -58,3 +58,27 @@ class AccessResult(BaseModel):
     role: str
     allowed: bool
     ends_at: AwareDatetime | None
+
+
+class Account(BaseModel):
+    """A local login account. The password is stored only as an Argon2id hash."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    username: str
+    password_hash: str
+    failed_count: int
+    locked_until: AwareDatetime | None
+    created_at: AwareDatetime
+
+
+class Session(BaseModel):
+    """A login session (the browser holds a random token; only its hash is stored)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    username: str
+    csrf: str
+    created_at: AwareDatetime
+    last_seen: AwareDatetime
+    expires_at: AwareDatetime

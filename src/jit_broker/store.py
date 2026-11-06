@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from jit_broker.domain import DecisionKind, Grant, RequestRecord, RequestStatus
+from jit_broker.domain import Account, DecisionKind, Grant, RequestRecord, RequestStatus, Session
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS requests (
@@ -42,6 +42,21 @@ CREATE TABLE IF NOT EXISTS grants (
     ends_at TEXT NOT NULL,
     revoked_at TEXT,
     CHECK (ends_at > starts_at)
+);
+CREATE TABLE IF NOT EXISTS accounts (
+    username TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    locked_until TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    csrf TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    expires_at TEXT NOT NULL
 );
 CREATE VIEW IF NOT EXISTS request_view AS
 SELECT r.*,
@@ -211,3 +226,67 @@ class Store:
             (_iso(now),),
         ).fetchall()
         return [RequestRecord.model_validate(dict(row)) for row in rows]
+
+    def create_account(self, username: str, password_hash: str, created_at: datetime) -> bool:
+        """Insert an account. Returns False when it already exists."""
+        cursor = self._conn.execute(
+            "INSERT OR IGNORE INTO accounts (username, password_hash, created_at) VALUES (?, ?, ?)",
+            (username, password_hash, _iso(created_at)),
+        )
+        return cursor.rowcount == 1
+
+    def get_account(self, username: str) -> Account | None:
+        row = self._conn.execute(
+            "SELECT username, password_hash, failed_count, locked_until, created_at "
+            "FROM accounts WHERE username = ?",
+            (username,),
+        ).fetchone()
+        return None if row is None else Account.model_validate(dict(row))
+
+    def set_login_failures(
+        self, username: str, failed_count: int, locked_until: datetime | None
+    ) -> None:
+        self._conn.execute(
+            "UPDATE accounts SET failed_count = ?, locked_until = ? WHERE username = ?",
+            (failed_count, None if locked_until is None else _iso(locked_until), username),
+        )
+
+    def insert_session(
+        self,
+        *,
+        token_hash: str,
+        username: str,
+        csrf: str,
+        created_at: datetime,
+        last_seen: datetime,
+        expires_at: datetime,
+    ) -> None:
+        self._conn.execute(
+            "INSERT INTO sessions (token_hash, username, csrf, created_at, last_seen, expires_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (token_hash, username, csrf, _iso(created_at), _iso(last_seen), _iso(expires_at)),
+        )
+
+    def get_session(self, token_hash: str) -> Session | None:
+        row = self._conn.execute(
+            "SELECT username, csrf, created_at, last_seen, expires_at "
+            "FROM sessions WHERE token_hash = ?",
+            (token_hash,),
+        ).fetchone()
+        return None if row is None else Session.model_validate(dict(row))
+
+    def touch_session(self, token_hash: str, last_seen: datetime) -> None:
+        self._conn.execute(
+            "UPDATE sessions SET last_seen = ? WHERE token_hash = ?",
+            (_iso(last_seen), token_hash),
+        )
+
+    def delete_session(self, token_hash: str) -> bool:
+        cursor = self._conn.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+        return cursor.rowcount == 1
+
+    def delete_stale_sessions(self, now: datetime, idle_cutoff: datetime) -> None:
+        self._conn.execute(
+            "DELETE FROM sessions WHERE expires_at <= ? OR last_seen <= ?",
+            (_iso(now), _iso(idle_cutoff)),
+        )
