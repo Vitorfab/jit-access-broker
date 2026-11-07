@@ -6,7 +6,7 @@ and every event goes to an append-only, tamper-evident audit log.
 
 Portuguese version: [README.pt-BR.md](README.pt-BR.md)
 
-> **Status:** v1.2.0.
+> **Status:** v1.3.0.
 > **Lab project:** the CLI trusts `--as <user>` (local operator tool); the API and dashboard need a login. No SSO, MFA or TLS.
 > Never use it to protect real systems.
 
@@ -27,7 +27,7 @@ time-bound access, approval workflows and auditability.
   (free text is never logged; refused attempts are logged as `action_refused`)
 - CLI with `--json` output
 - Local REST API on 127.0.0.1 with real login: Argon2id passwords, sessions, CSRF protection, lockout
-- Read-only local dashboard (strict CSP, no inline scripts, reads filtered by profile)
+- Local dashboard with actions: request, approve, deny, revoke, sweep and check (server-side authorization, CSRF, confirmation before revoke, strict CSP)
 
 ## Install
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
@@ -64,12 +64,12 @@ Endpoints: `GET /health`, `POST /requests`, `GET /requests`, `POST /requests/{id
 `POST /requests/{id}/deny`, `GET /grants`, `POST /check`, `POST /grants/{id}/revoke`,
 `POST /sweep`, `GET /audit/verify` (admin), `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`. Writes need the `X-CSRF-Token` header.
 
-### Dashboard (read-only)
+### Dashboard
 
     uv run jit-broker serve
 
 Create accounts with `uv run jit-broker user create <user>`, open `http://127.0.0.1:8765/` and sign in.
-The page shows requests, grants with a live countdown and the audit-chain status. It is read-only,
+The page shows requests, grants with a live countdown and the audit-chain status, and lets each profile act: request access, approve or deny with a reason, and (admins) revoke with confirmation or sweep. The server authorizes every action;
 uses an HttpOnly session cookie and talks to the same local API.
 
 ## Project structure

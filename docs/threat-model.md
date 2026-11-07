@@ -64,3 +64,11 @@ earlier than the last log entry, real authentication and SSO.
 This lab deliberately has no SSO, no MFA and no TLS. A real deployment should use an identity
 provider (SSO) with MFA, HTTPS everywhere with the `Secure` cookie flag, per-IP rate limiting,
 password reset and rotation, and centralized log shipping.
+## Dashboard actions (v1.3.0)
+| Threat | Control | Residual risk |
+|---|---|---|
+| Hidden buttons treated as security | The page only hides controls; the server re-checks every action | None known |
+| Accidental or forged revoke | Confirmation box, CSRF header, Origin check, admin only | A script already running on the page could click through |
+| Disclosure of policy through `/roles` | Only roles the user may request, public fields only | Role names are visible to users who can request them |
+| Stored text shown back (ticket, ids) | `textContent` only, strict CSP, tests that forbid dangerous sinks | A future change could add a sink; the tests guard it |
+| Approval by a distracted approver | Reason required, every decision logged, distinct approvers | Social engineering is out of scope |

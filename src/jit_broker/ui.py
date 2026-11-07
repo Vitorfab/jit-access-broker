@@ -3,6 +3,7 @@
 
 Static files only: they contain no data. All data comes from the session-protected API, and the
 page renders it with textContent (never innerHTML). Every response gets strict security headers.
+The page only hides controls that do not fit the profile: the server authorizes every action.
 """
 
 from collections.abc import Awaitable, Callable
@@ -50,19 +51,59 @@ INDEX_HTML = """<!doctype html>
 </section>
 <section id="dashboard" hidden>
 <div class="bar"><span id="who"></span><button id="signout" type="button">Sign out</button></div>
+<p id="action-msg" role="status"></p>
+<div id="confirm-box" class="confirm" hidden>
+<p id="confirm-text"></p>
+<button id="confirm-yes" type="button">Yes, revoke now</button>
+<button id="confirm-no" type="button">Cancel</button>
+</div>
 <div class="cards">
 <div class="card"><h2>Pending requests</h2><p id="stat-pending" class="big">-</p></div>
 <div class="card"><h2>Active grants</h2><p id="stat-grants" class="big">-</p></div>
 <div class="card"><h2>Audit chain</h2><p id="stat-audit" class="big small">-</p></div>
 </div>
+<section id="panel-request" hidden>
+<h2>Request access</h2>
+<form id="request-form">
+<label for="role">Role</label>
+<select id="role"></select>
+<p id="role-hint" class="muted"></p>
+<label for="minutes">Minutes</label>
+<input id="minutes" type="number" min="15" max="1440" value="30">
+<label for="justification">Justification (10-500 characters)</label>
+<textarea id="justification" maxlength="500" rows="3"></textarea>
+<label for="ticket">Ticket (optional)</label>
+<input id="ticket" type="text" maxlength="40" autocomplete="off" spellcheck="false">
+<button type="submit">Send request</button>
+</form>
+</section>
+<section id="panel-decide" hidden>
+<h2>Decisions</h2>
+<label for="reason">Reason for Approve or Deny (3-200 characters)</label>
+<input id="reason" type="text" maxlength="200" autocomplete="off">
+<p class="muted">Use the buttons in the Requests table. The server checks that you are an approver for the role.</p>
+</section>
+<section id="panel-admin" hidden>
+<h2>Administration</h2>
+<button id="sweep-btn" type="button">Expire overdue pending requests</button>
+<p class="muted">Use the Revoke button in the Grants table (you will be asked to confirm).</p>
+</section>
+<section id="panel-check">
+<h2>Check my access</h2>
+<form id="check-form">
+<label for="check-role">Role id</label>
+<input id="check-role" type="text" autocomplete="off" spellcheck="false">
+<button type="submit">Check now</button>
+</form>
+</section>
 <h2>Grants</h2>
 <table>
-<thead><tr><th>Grant</th><th>User</th><th>Role</th><th>Ends</th><th>Status</th><th>Time left</th></tr></thead>
+<thead><tr><th>Grant</th><th>User</th><th>Role</th><th>Ends</th><th>Status</th><th>Time left</th><th>Actions</th></tr></thead>
 <tbody id="grants-body"></tbody>
 </table>
 <h2>Requests</h2>
 <table>
-<thead><tr><th>Request</th><th>User</th><th>Role</th><th>Minutes</th><th>Status</th><th>Approvals</th></tr></thead>
+<thead><tr><th>Request</th><th>User</th><th>Role</th><th>Minutes</th><th>Status</th><th>Approvals</th><th>Actions</th></tr></thead>
 <tbody id="requests-body"></tbody>
 </table>
 <p class="muted">You only see what you requested, approve or administer. The countdown uses your browser clock and is informative only: the server decides access at check time.</p>
@@ -83,9 +124,12 @@ h1 { margin: 0 0 4px; font-size: 1.4rem; }
 h2 { font-size: 1rem; margin: 20px 0 8px; }
 .badge, .muted { color: var(--muted); font-size: 0.85rem; }
 form { display: grid; gap: 8px; max-width: 360px; }
-input, button { font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); }
+input, button, select, textarea { font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); }
 button { cursor: pointer; }
+td button { padding: 2px 8px; margin-right: 4px; font-size: 0.85rem; }
 #login-error { color: var(--bad); min-height: 1.2em; margin: 0; }
+#action-msg { min-height: 1.2em; margin: 8px 0; }
+.confirm { border: 2px solid var(--warn); border-radius: 8px; padding: 12px; margin: 8px 0; background: var(--card); }
 .bar { display: flex; justify-content: space-between; align-items: center; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
@@ -103,7 +147,7 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line
 APP_JS = r"""
 "use strict";
 (function () {
-  const state = { csrf: null, caps: [], refreshTimer: null, tickTimer: null };
+  const state = { csrf: null, user: null, caps: [], roles: [], revokeId: null, lastKey: null, refreshTimer: null, tickTimer: null };
   const KNOWN_STATUS = ["pending", "approved", "denied", "expired"];
   const $ = (id) => document.getElementById(id);
 
@@ -112,6 +156,13 @@ APP_JS = r"""
     if (text !== undefined && text !== null) { node.textContent = String(text); }
     if (cls) { node.className = cls; }
     return node;
+  }
+
+  function button(label, handler) {
+    const b = el("button", label);
+    b.type = "button";
+    b.addEventListener("click", handler);
+    return b;
   }
 
   function fmt(iso) {
@@ -124,6 +175,18 @@ APP_JS = r"""
     if (isNaN(ms) || ms <= 0) { return "ended"; }
     const s = Math.floor(ms / 1000);
     return Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m " + (s % 60) + "s";
+  }
+
+  function say(text, ok) {
+    const node = $("action-msg");
+    node.textContent = text;
+    node.className = ok ? "ok" : "bad";
+  }
+
+  function failText(res) {
+    const detail = res.body && res.body.detail;
+    if (typeof detail === "string") { return detail; }
+    return "The request was not accepted (status " + res.status + ").";
   }
 
   function call(path, options) {
@@ -141,13 +204,25 @@ APP_JS = r"""
     );
   }
 
+  function act(path, body, okText) {
+    return call(path, { method: "POST", body: body }).then((res) => {
+      if (res.status === 401) { showLogin("Session ended. Sign in again."); return false; }
+      if (res.status >= 200 && res.status < 300) {
+        say(okText, true);
+        return refresh().then(() => true);
+      }
+      say(failText(res), false);
+      return false;
+    }).catch(() => { say("Cannot reach the API.", false); return false; });
+  }
+
   function fill(tbodyId, rows, build) {
     const tbody = $(tbodyId);
     tbody.replaceChildren();
     if (rows.length === 0) {
       const tr = el("tr");
       const td = el("td", "Nothing to show", "muted");
-      td.colSpan = 6;
+      td.colSpan = 7;
       tr.appendChild(td);
       tbody.appendChild(tr);
       return;
@@ -159,10 +234,25 @@ APP_JS = r"""
     });
   }
 
+  function has(cap) { return state.caps.indexOf(cap) >= 0; }
+
   function grantStatus(g) {
     if (g.revoked_at) { return "revoked"; }
     if (new Date(g.ends_at).getTime() <= Date.now()) { return "ended"; }
     return "active";
+  }
+
+  function decide(kind, id) {
+    const reason = $("reason").value.trim();
+    if (reason.length < 3 || reason.length > 200) { say("Write a reason (3-200 characters) first.", false); return; }
+    act("/requests/" + id + "/" + kind, { reason: reason }, "Decision recorded for request #" + id + ".")
+      .then((ok) => { if (ok) { $("reason").value = ""; } });
+  }
+
+  function askRevoke(g) {
+    state.revokeId = g.id;
+    $("confirm-text").textContent = "Revoke grant #" + g.id + " (" + g.grantee + " -> " + g.role + ")? Access ends immediately.";
+    $("confirm-box").hidden = false;
   }
 
   function renderGrants(grants) {
@@ -170,8 +260,10 @@ APP_JS = r"""
       const status = grantStatus(g);
       const left = el("td", status === "active" ? remaining(g.ends_at) : "-", "countdown");
       if (status === "active") { left.dataset.ends = g.ends_at; }
+      const actions = el("td");
+      if (has("admin") && status === "active") { actions.appendChild(button("Revoke", () => askRevoke(g))); }
       return [el("td", "#" + g.id), el("td", g.grantee), el("td", g.role),
-        el("td", fmt(g.ends_at)), el("td", status, status), left];
+        el("td", fmt(g.ends_at)), el("td", status, status), left, actions];
     });
     $("stat-grants").textContent = String(grants.filter((g) => grantStatus(g) === "active").length);
   }
@@ -179,8 +271,13 @@ APP_JS = r"""
   function renderRequests(requests) {
     fill("requests-body", requests, (r) => {
       const cls = KNOWN_STATUS.indexOf(r.status) >= 0 ? r.status : "";
+      const actions = el("td");
+      if (has("approve") && r.status === "pending" && r.requester !== state.user) {
+        actions.appendChild(button("Approve", () => decide("approve", r.id)));
+        actions.appendChild(button("Deny", () => decide("deny", r.id)));
+      }
       return [el("td", "#" + r.id), el("td", r.requester), el("td", r.role),
-        el("td", r.duration_minutes), el("td", r.status, cls), el("td", r.approvals)];
+        el("td", r.duration_minutes), el("td", r.status, cls), el("td", r.approvals), actions];
     });
     $("stat-pending").textContent = String(requests.filter((r) => r.status === "pending").length);
   }
@@ -215,31 +312,89 @@ APP_JS = r"""
     clearInterval(state.refreshTimer);
     clearInterval(state.tickTimer);
     state.csrf = null;
+    state.user = null;
     state.caps = [];
+    state.roles = [];
+    state.revokeId = null;
+    state.lastKey = null;
     $("dashboard").hidden = true;
+    $("confirm-box").hidden = true;
     $("login").hidden = false;
     $("login-error").textContent = message;
   }
 
   function refresh() {
-    const isAdmin = state.caps.indexOf("admin") >= 0;
-    const audit = isAdmin ? call("/audit/verify") : Promise.resolve({ status: 0, body: {} });
+    const audit = has("admin") ? call("/audit/verify") : Promise.resolve({ status: 0, body: {} });
     return Promise.all([call("/requests"), call("/grants"), audit]).then((res) => {
       if (res.some((r) => r.status === 401)) { showLogin("Session ended. Sign in again."); return false; }
       if (res[0].status !== 200 || res[1].status !== 200) { showLogin("The API refused the request."); return false; }
-      renderRequests(res[0].body);
-      renderGrants(res[1].body);
+      const key = JSON.stringify([res[0].body, res[1].body, res[1].body.map(grantStatus)]);
+      if (key !== state.lastKey) {
+        state.lastKey = key;
+        renderRequests(res[0].body);
+        renderGrants(res[1].body);
+      }
       renderAudit(res[2]);
       return true;
     }).catch(() => { showLogin("Cannot reach the API."); return false; });
   }
 
+  function describeRole() {
+    const r = state.roles.find((x) => x.name === $("role").value);
+    if (!r) { $("role-hint").textContent = "No role available to request."; return; }
+    $("minutes").max = String(r.max_duration_minutes);
+    $("role-hint").textContent = r.description + " Risk: " + r.risk + ". Max " + r.max_duration_minutes + " min. Approvals needed: " + r.approvals_required + ".";
+  }
+
+  function loadRoles() {
+    return call("/roles").then((res) => {
+      state.roles = res.status === 200 ? res.body : [];
+      const select = $("role");
+      select.replaceChildren();
+      state.roles.forEach((r) => {
+        const option = el("option", r.name);
+        option.value = r.name;
+        select.appendChild(option);
+      });
+      describeRole();
+    }).catch(() => { state.roles = []; });
+  }
+
+  function submitRequest(event) {
+    event.preventDefault();
+    const minutes = parseInt($("minutes").value, 10);
+    const body = { role: $("role").value, minutes: minutes, justification: $("justification").value.trim() };
+    const ticket = $("ticket").value.trim();
+    if (ticket) { body.ticket = ticket; }
+    if (!body.role || isNaN(minutes)) { say("Choose a role and the number of minutes.", false); return; }
+    act("/requests", body, "Request sent.").then((ok) => {
+      if (ok) { $("justification").value = ""; $("ticket").value = ""; }
+    });
+  }
+
+  function runCheck(event) {
+    event.preventDefault();
+    const role = $("check-role").value.trim();
+    if (!/^[a-z][a-z0-9-]{1,31}$/.test(role)) { say("Enter a valid role id.", false); return; }
+    call("/check", { method: "POST", body: { role: role } }).then((res) => {
+      if (res.status === 401) { showLogin("Session ended. Sign in again."); return; }
+      if (res.status === 200 && res.body.allowed) { say("ALLOWED until " + fmt(res.body.ends_at) + ".", true); }
+      else if (res.status === 200) { say("DENIED: no active grant for this role.", false); }
+      else { say(failText(res), false); }
+    }).catch(() => say("Cannot reach the API.", false));
+  }
+
   function enter(profile) {
     state.csrf = profile.csrf_token;
+    state.user = profile.username;
     state.caps = profile.capabilities;
     $("who").textContent = "Signed in as " + profile.display_name + " (" + profile.username + ")";
-    refresh().then((ok) => {
-      if (!ok) { return; }
+    $("panel-request").hidden = !has("request");
+    $("panel-decide").hidden = !has("approve");
+    $("panel-admin").hidden = !has("admin");
+    say("", true);
+    Promise.all([refresh(), loadRoles()]).then((results) => {
+      if (!results[0]) { return; }
       $("login").hidden = true;
       $("dashboard").hidden = false;
       clearInterval(state.refreshTimer);
@@ -268,6 +423,17 @@ APP_JS = r"""
   }
 
   $("login-form").addEventListener("submit", signIn);
+  $("request-form").addEventListener("submit", submitRequest);
+  $("check-form").addEventListener("submit", runCheck);
+  $("role").addEventListener("change", describeRole);
+  $("sweep-btn").addEventListener("click", () => act("/sweep", undefined, "Sweep finished."));
+  $("confirm-no").addEventListener("click", () => { state.revokeId = null; $("confirm-box").hidden = true; });
+  $("confirm-yes").addEventListener("click", () => {
+    const id = state.revokeId;
+    state.revokeId = null;
+    $("confirm-box").hidden = true;
+    if (id !== null) { act("/grants/" + id + "/revoke", undefined, "Grant #" + id + " revoked."); }
+  });
   $("signout").addEventListener("click", () => {
     call("/auth/logout", { method: "POST" }).finally(() => showLogin(""));
   });

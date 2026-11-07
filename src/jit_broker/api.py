@@ -54,6 +54,14 @@ class CheckBody(_Body):
     role: str = Field(min_length=1, max_length=32)
 
 
+class RoleInfo(BaseModel):
+    name: str
+    description: str
+    risk: str
+    max_duration_minutes: int
+    approvals_required: int
+
+
 class Profile(BaseModel):
     username: str
     display_name: str
@@ -156,6 +164,21 @@ def create_app(policy: Policy, db: Path, audit_path: Path) -> FastAPI:
             auth.logout(token)
         response.delete_cookie(COOKIE_NAME, path="/")
         return {"status": "logged out"}
+
+    @app.get("/roles")
+    def list_roles(session: ReadSession) -> list[RoleInfo]:
+        with handled(), services() as (broker, _):
+            roles = broker.requestable_roles(session.username)
+        return [
+            RoleInfo(
+                name=name,
+                description=role.description,
+                risk=role.risk.value,
+                max_duration_minutes=role.max_duration_minutes,
+                approvals_required=role.approvals_required,
+            )
+            for name, role in roles
+        ]
 
     @app.post("/requests", status_code=201)
     def create_request(body: RequestBody, session: WriteSession) -> RequestRecord:

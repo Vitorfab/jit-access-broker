@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from jit_broker.audit import AuditError, AuditLog, Detail
 from jit_broker.domain import AccessResult, DecisionKind, Grant, RequestRecord, RequestStatus
-from jit_broker.policy import MIN_DURATION_MINUTES, Capability, Policy
+from jit_broker.policy import MIN_DURATION_MINUTES, Capability, Policy, Role
 from jit_broker.store import Store
 
 MAX_PENDING_PER_USER = 5
@@ -370,3 +370,11 @@ class Broker:
             return True
         role_def = self._policy.roles.get(role)
         return role_def is not None and user in role_def.approvers
+
+    def requestable_roles(self, user: str) -> list[tuple[str, Role]]:
+        """Roles this user may request (deny-by-default: unknown users get none)."""
+        if user not in self._policy.users:
+            return []
+        return [
+            (name, role) for name, role in self._policy.roles.items() if user in role.requesters
+        ]
