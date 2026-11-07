@@ -89,3 +89,10 @@ the docs say production needs both.
 The API and dashboard use the session user only. Reads are filtered by profile in `Broker`.
 State-changing calls need the CSRF header and a same-origin Origin. The CLI keeps `--as` as a
 local operator tool. Duplicate YAML keys are now rejected by the policy loader.
+## D-017: Dashboard actions, authorization stays on the server
+The dashboard can request, approve, deny, revoke, sweep and check access. It only hides controls
+that do not fit the profile; every action is authorized by the server with the session user, the
+CSRF header and the Origin check. Approve and Deny need a reason typed on the page. Revoke asks for
+confirmation in a box and is reachable only through it. `GET /roles` returns only the roles the
+user may request, without requester or approver lists. Tables are redrawn only when the data
+changes, so the 5-second refresh does not swallow clicks.

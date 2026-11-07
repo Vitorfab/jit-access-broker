@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-07
+
+### Added
+- Dashboard actions: request access, approve, deny (with reason), revoke (with confirmation), sweep and check access.
+- GET /roles: roles the signed-in user may request.
+- Threat model section for dashboard actions.
+
 ## [1.2.0] - 2026-11-06
 
 ### Added
@@ -65,7 +72,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - `check` command (exit code 0 = allowed, 1 = denied) and `grants` command.
 - Append-only JSON Lines audit log (`schema_version` 1) for requests, decisions, grants and checks.
 
-[Unreleased]: https://github.com/Vitorfab/jit-access-broker/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Vitorfab/jit-access-broker/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v1.0.0

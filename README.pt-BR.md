@@ -4,7 +4,7 @@ Um broker de acesso privilegiado Just-In-Time (JIT), pequeno e bem testado, para
 com recursos simulados. O usuário pede acesso elevado com justificativa, aprovadores decidem,
 o acesso expira sozinho e todo evento vai para um log de auditoria append-only e resistente a adulteração.
 
-> **Status:** v1.2.0.
+> **Status:** v1.3.0.
 > **Projeto de laboratório:** os usuários são simulados (`--as <usuario>`) e não há autenticação real.
 > Nunca use para proteger sistemas reais.
 
