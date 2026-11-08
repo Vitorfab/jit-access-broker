@@ -96,3 +96,12 @@ CSRF header and the Origin check. Approve and Deny need a reason typed on the pa
 confirmation in a box and is reachable only through it. `GET /roles` returns only the roles the
 user may request, without requester or approver lists. Tables are redrawn only when the data
 changes, so the 5-second refresh does not swallow clicks.
+## D-018: Two-person policy changes through the dashboard
+An admin proposes a complete new policy (JSON editor); a different admin approves it. The server
+validates with the same strict model as the file, requires at least two admins (otherwise nobody
+could approve the next change) and refuses any change that gives the acting person a new
+capability or adds them as requester or approver. Each proposal stores the hash of the policy it
+was based on and becomes stale if the policy moved. Applying writes a numbered backup, stages and
+re-validates a temporary file, then replaces the policy file atomically as the last step. The API
+reloads the policy when the file changes and answers 503 if it cannot be loaded. Known limit: two
+colluding admins can change everything; MFA is out of scope for this lab.

@@ -72,3 +72,14 @@ password reset and rotation, and centralized log shipping.
 | Disclosure of policy through `/roles` | Only roles the user may request, public fields only | Role names are visible to users who can request them |
 | Stored text shown back (ticket, ids) | `textContent` only, strict CSP, tests that forbid dangerous sinks | A future change could add a sink; the tests guard it |
 | Approval by a distracted approver | Reason required, every decision logged, distinct approvers | Social engineering is out of scope |
+## Policy editor (v1.4.0)
+| Threat | Control | Residual risk |
+|---|---|---|
+| An admin gives themselves more privilege | Nobody may add new capabilities to themselves or add themselves as requester or approver of a role; checked for the proposer and again for the approver | Weakening a role where the person already has access (for example fewer approvals) is allowed with approval |
+| One admin changes the policy alone | Two-person rule: a different admin must approve; the policy must keep at least two admins | Two admins who collude or are both compromised can change anything; there is no MFA |
+| Invalid or hostile policy | Same strict model as the file, size limit, pending limit, staged file re-validated, atomic replace | None known |
+| Concurrent or outdated proposals | Each proposal stores the hash of the policy it was based on; if the policy changed it becomes stale | None known |
+| Loss of the previous policy | A numbered backup is written before every change | Backups sit next to the policy file |
+| Policy content in logs | Only hashes, change ids and fixed reasons are logged; validation key names are not logged | Hashes reveal that a change happened, not what |
+| Policy file broken or removed outside the editor | The API reloads on change and answers 503 (fail closed) when it cannot load it | The CLI loads the file on every call and reports the error |
+| Removed users | Sessions and checks use the current policy, so a removed user loses access at once | Their account row stays in the database |

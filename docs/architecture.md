@@ -23,6 +23,7 @@ flowchart LR
 | `cli.py` | Translates commands into service calls. |
 | `api.py` | Local REST API over the same service, with session login. |
 | `auth.py` | Local accounts, Argon2id hashing, sessions and login throttling. |
+| `policy_admin.py` | Two-person policy changes: proposals, approval, backup and atomic apply. |
 
 ## Request lifecycle
 ```mermaid

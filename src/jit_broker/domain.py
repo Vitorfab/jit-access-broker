@@ -1,6 +1,7 @@
 """Domain models: access requests, grants and their lifecycle states."""
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
@@ -82,3 +83,19 @@ class Session(BaseModel):
     created_at: AwareDatetime
     last_seen: AwareDatetime
     expires_at: AwareDatetime
+
+
+class PolicyChange(BaseModel):
+    """A proposed policy change. The proposed policy itself is stored separately."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: int
+    proposer: str
+    summary: str
+    base_hash: str
+    new_hash: str
+    status: Literal["pending", "applied", "rejected", "stale"]
+    proposed_at: AwareDatetime
+    decided_by: str | None
+    decided_at: AwareDatetime | None

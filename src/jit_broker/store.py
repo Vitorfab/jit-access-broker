@@ -9,7 +9,15 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from jit_broker.domain import Account, DecisionKind, Grant, RequestRecord, RequestStatus, Session
+from jit_broker.domain import (
+    Account,
+    DecisionKind,
+    Grant,
+    PolicyChange,
+    RequestRecord,
+    RequestStatus,
+    Session,
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS requests (
@@ -57,6 +65,18 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at TEXT NOT NULL,
     last_seen TEXT NOT NULL,
     expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS policy_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposer TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    base_hash TEXT NOT NULL,
+    new_hash TEXT NOT NULL,
+    new_policy TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'applied', 'rejected', 'stale')),
+    proposed_at TEXT NOT NULL,
+    decided_by TEXT,
+    decided_at TEXT
 );
 CREATE VIEW IF NOT EXISTS request_view AS
 SELECT r.*,
@@ -289,4 +309,59 @@ class Store:
         self._conn.execute(
             "DELETE FROM sessions WHERE expires_at <= ? OR last_seen <= ?",
             (_iso(now), _iso(idle_cutoff)),
+        )
+
+    def insert_policy_change(
+        self,
+        *,
+        proposer: str,
+        summary: str,
+        base_hash: str,
+        new_hash: str,
+        new_policy: str,
+        proposed_at: datetime,
+    ) -> int:
+        cursor = self._conn.execute(
+            "INSERT INTO policy_changes (proposer, summary, base_hash, new_hash, new_policy, "
+            "status, proposed_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+            (proposer, summary, base_hash, new_hash, new_policy, _iso(proposed_at)),
+        )
+        if cursor.lastrowid is None:
+            raise RuntimeError("insert did not return a row id")
+        return cursor.lastrowid
+
+    def get_policy_change(self, change_id: int) -> PolicyChange | None:
+        row = self._conn.execute(
+            "SELECT id, proposer, summary, base_hash, new_hash, status, proposed_at, "
+            "decided_by, decided_at FROM policy_changes WHERE id = ?",
+            (change_id,),
+        ).fetchone()
+        return None if row is None else PolicyChange.model_validate(dict(row))
+
+    def get_policy_change_body(self, change_id: int) -> str | None:
+        row = self._conn.execute(
+            "SELECT new_policy FROM policy_changes WHERE id = ?", (change_id,)
+        ).fetchone()
+        return None if row is None else str(row[0])
+
+    def list_policy_changes(self) -> list[PolicyChange]:
+        rows = self._conn.execute(
+            "SELECT id, proposer, summary, base_hash, new_hash, status, proposed_at, "
+            "decided_by, decided_at FROM policy_changes ORDER BY id DESC LIMIT 50"
+        ).fetchall()
+        return [PolicyChange.model_validate(dict(row)) for row in rows]
+
+    def count_pending_policy_changes(self) -> int:
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM policy_changes WHERE status = 'pending'"
+        ).fetchone()
+        return int(row[0])
+
+    def decide_policy_change(
+        self, change_id: int, status: str, decided_by: str, decided_at: datetime
+    ) -> None:
+        self._conn.execute(
+            "UPDATE policy_changes SET status = ?, decided_by = ?, decided_at = ? "
+            "WHERE id = ? AND status = 'pending'",
+            (status, decided_by, _iso(decided_at), change_id),
         )

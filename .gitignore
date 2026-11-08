@@ -26,3 +26,7 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+# Local policy copies and policy editor files
+policies/local*.yaml
+policies/backups/
+policies/.*.new
