@@ -59,3 +59,14 @@ head hash on success.
 | `logout` | user | none |
 
 Passwords, session tokens and CSRF tokens are never logged.
+## Events added in v1.4.0
+| Event | Actor | Details |
+|---|---|---|
+| `policy_proposed` | admin | `change_id`, `base_hash`, `new_hash` |
+| `policy_approved` | admin | `change_id`, `new_hash` |
+| `policy_applied` | `system` | `change_id`, `new_hash` |
+| `policy_rejected` | admin | `change_id` |
+| `policy_change_stale` | `system` | `change_id` |
+
+`action_refused.action` can also be `policy_propose`, `policy_approve` or `policy_reject`.
+The policy content is never written to the log.

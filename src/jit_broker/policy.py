@@ -5,6 +5,8 @@ listed as requester/approver for it, gets nothing. Loading is strict: unknown
 fields, wrong types and broken references are rejected.
 """
 
+import hashlib
+import json
 from collections.abc import Hashable
 from datetime import timedelta
 from enum import StrEnum
@@ -150,3 +152,30 @@ class _UniqueKeyLoader(yaml.SafeLoader):
                 raise yaml.YAMLError("duplicate key")
             seen.add(key)
         return super().construct_mapping(node, deep=deep)
+
+
+def policy_from_mapping(raw: object) -> Policy:
+    """Validate an in-memory mapping (for example from the editor) with the same strict rules."""
+    if not isinstance(raw, dict):
+        raise PolicyError("invalid policy: the root must be a mapping")
+    try:
+        return Policy.model_validate(raw)
+    except ValidationError as exc:
+        raise PolicyError(_format_errors(exc)) from exc
+
+
+def policy_to_data(policy: Policy) -> dict[str, Any]:
+    """Plain JSON-compatible data for a policy."""
+    return policy.model_dump(mode="json")
+
+
+def policy_digest(policy: Policy) -> str:
+    """SHA-256 of the canonical JSON of the policy (independent of file formatting)."""
+    canonical = json.dumps(
+        policy_to_data(policy), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def policy_to_yaml(policy: Policy) -> str:
+    return yaml.safe_dump(policy_to_data(policy), sort_keys=False, allow_unicode=False)

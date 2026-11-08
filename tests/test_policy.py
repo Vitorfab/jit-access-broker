@@ -25,7 +25,7 @@ def _write(tmp_path: Path, data: dict[str, Any]) -> Path:
 
 def test_example_policy_loads() -> None:
     policy = load_policy(EXAMPLE)
-    assert len(policy.users) == 5
+    assert len(policy.users) == 6
     assert len(policy.roles) == 4
     assert Capability.ADMIN in policy.users["arthur"].capabilities
 

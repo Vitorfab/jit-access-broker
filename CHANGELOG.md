@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-07
+
+### Added
+- Policy editor in the dashboard (admins): propose a new policy, a different admin approves it, numbered backup and atomic apply.
+- Rules: at least two admins, nobody can grant themselves new privileges, stale proposals are refused.
+- Audit events for policy changes (hashes only).
+- Second demo admin (beatriz) in the example policy.
+
+### Changed
+- The API reloads the policy when the file changes and answers 503 when it cannot load it.
+
 ## [1.3.0] - 2026-11-07
 
 ### Added
@@ -72,7 +83,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 - `check` command (exit code 0 = allowed, 1 = denied) and `grants` command.
 - Append-only JSON Lines audit log (`schema_version` 1) for requests, decisions, grants and checks.
 
-[Unreleased]: https://github.com/Vitorfab/jit-access-broker/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/Vitorfab/jit-access-broker/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Vitorfab/jit-access-broker/releases/tag/v1.1.0

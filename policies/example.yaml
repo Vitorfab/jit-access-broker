@@ -18,6 +18,9 @@ users:
   arthur:
     display_name: "Arthur (demo admin)"
     capabilities: [admin]
+  beatriz:
+    display_name: "Beatriz (demo admin)"
+    capabilities: [admin]
 
 roles:
   db-readonly:

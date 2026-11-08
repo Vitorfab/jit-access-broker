@@ -267,7 +267,7 @@ def serve(
     typer.echo(f"Listening on http://127.0.0.1:{port} (Ctrl+C to stop)")
     typer.echo("Sign in with an account created by: jit-broker user create <user>")
     uvicorn.run(
-        create_app(policy, settings.db, settings.audit),
+        create_app(policy, settings.db, settings.audit, settings.policy),
         host="127.0.0.1",
         port=port,
         log_level="warning",

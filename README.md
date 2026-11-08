@@ -6,7 +6,7 @@ and every event goes to an append-only, tamper-evident audit log.
 
 Portuguese version: [README.pt-BR.md](README.pt-BR.md)
 
-> **Status:** v1.3.0.
+> **Status:** v1.4.0.
 > **Lab project:** the CLI trusts `--as <user>` (local operator tool); the API and dashboard need a login. No SSO, MFA or TLS.
 > Never use it to protect real systems.
 
@@ -71,6 +71,16 @@ Endpoints: `GET /health`, `POST /requests`, `GET /requests`, `POST /requests/{id
 Create accounts with `uv run jit-broker user create <user>`, open `http://127.0.0.1:8765/` and sign in.
 The page shows requests, grants with a live countdown and the audit-chain status, and lets each profile act: request access, approve or deny with a reason, and (admins) revoke with confirmation or sweep. The server authorizes every action;
 uses an HttpOnly session cookie and talks to the same local API.
+
+### Policy editor (admins, two-person approval)
+
+Use a local copy so the repository file is not changed, then start the server with it:
+
+    Copy-Item policies\example.yaml policies\local.yaml
+    uv run jit-broker --policy policies\local.yaml serve
+
+Sign in as an admin (`arthur` or `beatriz`), load the policy, edit the JSON and propose. The other
+admin approves in the same panel. Every change keeps a numbered backup in `policies\backups\`.
 
 ## Project structure
 See [docs/architecture.md](docs/architecture.md) (with Mermaid diagrams).

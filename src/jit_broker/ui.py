@@ -96,6 +96,17 @@ INDEX_HTML = """<!doctype html>
 <button type="submit">Check now</button>
 </form>
 </section>
+<section id="panel-policy" hidden>
+<h2>Policy editor (two-person approval)</h2>
+<p class="muted">Load the policy, edit the JSON and propose. A different admin must approve before it applies. You cannot give yourself new privileges.</p>
+<textarea id="policy-text" rows="14" spellcheck="false"></textarea>
+<div><button id="policy-load" type="button">Load current policy</button> <button id="policy-propose" type="button">Propose change</button></div>
+<h2>Policy changes</h2>
+<table>
+<thead><tr><th>Change</th><th>Proposed by</th><th>Summary</th><th>Status</th><th>Actions</th></tr></thead>
+<tbody id="policy-body"></tbody>
+</table>
+</section>
 <h2>Grants</h2>
 <table>
 <thead><tr><th>Grant</th><th>User</th><th>Role</th><th>Ends</th><th>Status</th><th>Time left</th><th>Actions</th></tr></thead>
@@ -142,6 +153,7 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line
 .revoked, .denied, .bad { color: var(--bad); }
 .pending, .ended, .expired { color: var(--warn); }
 .countdown { font-variant-numeric: tabular-nums; }
+#policy-text { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 0.85rem; }
 """
 
 APP_JS = r"""
@@ -302,6 +314,48 @@ APP_JS = r"""
     }
   }
 
+  function loadPolicyText() {
+    call("/policy").then((res) => {
+      if (res.status === 200) {
+        $("policy-text").value = JSON.stringify(res.body.policy, null, 2);
+        say("Current policy loaded.", true);
+      } else { say(failText(res), false); }
+    }).catch(() => say("Cannot reach the API.", false));
+  }
+
+  function proposePolicy() {
+    let parsed;
+    try { parsed = JSON.parse($("policy-text").value); }
+    catch (e) { say("The policy text is not valid JSON.", false); return; }
+    act("/policy/changes", { policy: parsed }, "Policy change proposed. Another admin must approve it.")
+      .then(() => { state.policyKey = null; loadPolicyChanges(); });
+  }
+
+  function renderPolicyChanges(changes) {
+    const classes = { pending: "pending", applied: "approved", rejected: "denied", stale: "expired" };
+    fill("policy-body", changes, (c) => {
+      const actions = el("td");
+      if (c.status === "pending") {
+        if (c.proposer !== state.user) {
+          actions.appendChild(button("Approve", () => act("/policy/changes/" + c.id + "/approve", undefined, "Policy change #" + c.id + " applied.")));
+        }
+        actions.appendChild(button("Reject", () => act("/policy/changes/" + c.id + "/reject", undefined, "Policy change #" + c.id + " rejected.")));
+      }
+      return [el("td", "#" + c.id), el("td", c.proposer), el("td", c.summary),
+        el("td", c.status, classes[c.status] || ""), actions];
+    });
+  }
+
+  function loadPolicyChanges() {
+    return call("/policy/changes").then((res) => {
+      if (res.status !== 200) { return; }
+      const key = JSON.stringify(res.body);
+      if (key === state.policyKey) { return; }
+      state.policyKey = key;
+      renderPolicyChanges(res.body);
+    }).catch(() => {});
+  }
+
   function tick() {
     document.querySelectorAll("td.countdown[data-ends]").forEach((td) => {
       td.textContent = remaining(td.dataset.ends);
@@ -317,6 +371,8 @@ APP_JS = r"""
     state.roles = [];
     state.revokeId = null;
     state.lastKey = null;
+    state.policyKey = null;
+    $("policy-text").value = "";
     $("dashboard").hidden = true;
     $("confirm-box").hidden = true;
     $("login").hidden = false;
@@ -335,6 +391,7 @@ APP_JS = r"""
         renderGrants(res[1].body);
       }
       renderAudit(res[2]);
+      if (has("admin")) { loadPolicyChanges(); }
       return true;
     }).catch(() => { showLogin("Cannot reach the API."); return false; });
   }
@@ -392,6 +449,8 @@ APP_JS = r"""
     $("panel-request").hidden = !has("request");
     $("panel-decide").hidden = !has("approve");
     $("panel-admin").hidden = !has("admin");
+    $("panel-policy").hidden = !has("admin");
+    if (has("admin")) { loadPolicyChanges(); }
     say("", true);
     Promise.all([refresh(), loadRoles()]).then((results) => {
       if (!results[0]) { return; }
@@ -425,6 +484,8 @@ APP_JS = r"""
   $("login-form").addEventListener("submit", signIn);
   $("request-form").addEventListener("submit", submitRequest);
   $("check-form").addEventListener("submit", runCheck);
+  $("policy-load").addEventListener("click", loadPolicyText);
+  $("policy-propose").addEventListener("click", proposePolicy);
   $("role").addEventListener("change", describeRole);
   $("sweep-btn").addEventListener("click", () => act("/sweep", undefined, "Sweep finished."));
   $("confirm-no").addEventListener("click", () => { state.revokeId = null; $("confirm-box").hidden = true; });
